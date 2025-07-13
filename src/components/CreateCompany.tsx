@@ -8,16 +8,20 @@ interface CompanyFormData {
     address: string;
     email: string;
     phone: string;
-    pfCode: string;
-    esiCode: string;
-    labourLicense: string;
-    domainName: string;
-    contactPerson: string;
+    pf_code: string;
+    esi_code: string;
+    labour_license: string;
+    domain_name: string;
+    contact_person: string;
     website: string;
-    superAdminId: string;
+    super_admin_id: string;
     password: string;
     logo: File | null;
     inviteAdmin: boolean;
+    pan_no: string; // Added
+    tan_no: string; // Added
+    company_type: string; // Added
+    sector: string; // Added
 }
 
 interface CreateCompanyProps {
@@ -29,35 +33,39 @@ interface CreateCompanyProps {
         address: string;
         email: string;
         phone: string;
-        pfCode: string;
-        esiCode: string;
-        labourLicense: string;
-        domainName: string;
-        contactPerson: string;
+        pf_code: string;
+        esi_code: string;
+        labour_license: string;
+        domain_name: string;
+        contact_person: string;
         website: string;
-        superAdminID: string;
+        super_admin_id: string;
         password: string;
         logo: string;
     } | null; // Optional company for updating
 }
 
-export default function CreateCompany({ onClose, company }: CreateCompanyProps) {
+export default function CreateCompany({ onClose, company }: CreateCompanyProps): JSX.Element {
     const [formData, setFormData] = useState<CompanyFormData>({
         code: '',
         name: '',
         address: '',
         email: '',
         phone: '',
-        pfCode: '',
-        esiCode: '',
-        labourLicense: '',
-        domainName: '',
-        contactPerson: '',
+        pf_code: '',
+        esi_code: '',
+        labour_license: '',
+        domain_name: '',
+        contact_person: '',
         website: '',
-        superAdminId: '',
+        super_admin_id: '',
         password: '',
         logo: null,
-        inviteAdmin: false, // Checkbox for sending email
+        inviteAdmin: false,
+        pan_no: '', // Added
+        tan_no: '', // Added
+        company_type: '', // Added
+        sector: '', // Added
     });
 
     useEffect(() => {
@@ -68,16 +76,20 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
                 address: company.address || '',
                 email: company.email || '',
                 phone: company.phone || '',
-                pfCode: company.pfCode || '',
-                esiCode: company.esiCode || '',
-                labourLicense: company.labourLicense || '',
-                domainName: company.domainName || '',
-                contactPerson: company.contactPerson || '',
+                pf_code: company.pf_code || '',
+                esi_code: company.esi_code || '',
+                labour_license: company.labour_license || '',
+                domain_name: company.domain_name || '',
+                contact_person: company.contact_person || '',
                 website: company.website || '',
-                superAdminId: company.superAdminID || '',
+                super_admin_id: company.super_admin_id || '',
                 password: company.password || '',
-                logo: null, // Logo cannot be pre-filled
+                logo: null,
                 inviteAdmin: false,
+                pan_no: '', // Added
+                tan_no: '', // Added
+                company_type: '', // Added
+                sector: '', // Added
             });
         }
     }, [company]);
@@ -90,6 +102,14 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
         setFormData((prev) => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value,
+        }));
+    };
+
+    const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData((prev) => ({
+            ...prev,
+            [name]: value,
         }));
     };
 
@@ -108,13 +128,11 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
 
         try {
             const response = await axios.post('https://sec.pacehrm.com/api/logo', logoFormData, {
-                // const response = await axios.post('http://localhost:5000/api/logo', logoFormData, {
-
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
             });
-            return response.data.fileUrl; // Return the uploaded logo URL
+            return response.data.fileUrl;
         } catch (err: any) {
             setError('Failed to upload logo. Please try again.');
             return null;
@@ -126,7 +144,29 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
         setIsSubmitting(true);
         setError(null);
 
-        // Validation for 'code' field
+        // PAN/TAN validation
+        const panRegex = /^[A-Za-z0-9]{10}$/;
+        if (!formData.pan_no || !panRegex.test(formData.pan_no)) {
+            setError('Company PAN No must be 10 alphanumeric characters.');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!formData.tan_no || !panRegex.test(formData.tan_no)) {
+            setError('Company TAN No must be 10 alphanumeric characters.');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!formData.company_type) {
+            setError('Company Type is required.');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!formData.sector) {
+            setError('Sector is required.');
+            setIsSubmitting(false);
+            return;
+        }
+
         if (!formData.code) {
             setError('Code is required.');
             setIsSubmitting(false);
@@ -135,7 +175,6 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
 
         let logoUrl = null;
 
-        // Upload the logo if it exists
         if (formData.logo) {
             logoUrl = await uploadLogo(formData.logo);
             if (!logoUrl) {
@@ -147,7 +186,7 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
         const formDataToSend = new FormData();
         Object.entries(formData).forEach(([key, value]) => {
             if (key === 'logo') {
-                formDataToSend.append('logo', logoUrl || ''); // Use the uploaded logo URL
+                formDataToSend.append('logo', logoUrl || '');
             } else if (value !== null && value !== undefined) {
                 formDataToSend.append(key, value);
             }
@@ -171,8 +210,8 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
                 alert('Company updated successfully!');
             } else {
                 // Create a new company
-                response = await axios.post('https://sec.pacehrm.com/api/companies', formDataToSend, {
-                    // response = await axios.post('http://localhost:5000/api/companies', formDataToSend, {
+                // response = await axios.post('https://sec.pacehrm.com/api/companies', formDataToSend, {
+                response = await axios.post('http://localhost:5000/api/companies', formDataToSend, {
 
                     headers: {
                         'Content-Type': 'multipart/form-data',
@@ -186,15 +225,15 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
                 await axios.post('https://sec.pacehrm.com/api/email/send', {
                     to: formData.email,
                     companyName: formData.name,
-                    subdomain: formData.domainName,
+                    subdomain: formData.domain_name,
                     email: formData.email,
                     password: formData.password,
                     sendEmail: true,
                 });
-                alert('Invitation email sentttt successfully!');
+                alert('Invitation email sent successfully!');
             }
 
-            window.location.reload(); // Reload the page after successful creation or update
+            window.location.reload();
         } catch (err: any) {
             setError('Failed to save company or send email. Please try again.');
         } finally {
@@ -209,250 +248,226 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps) 
             address: '',
             email: '',
             phone: '',
-            pfCode: '',
-            esiCode: '',
-            labourLicense: '',
-            domainName: '',
-            contactPerson: '',
+            pf_code: '',
+            esi_code: '',
+            labour_license: '',
+            domain_name: '',
+            contact_person: '',
             website: '',
-            superAdminId: '',
+            super_admin_id: '',
             password: '',
             logo: null,
             inviteAdmin: false,
+            pan_no: '', // Added
+            tan_no: '', // Added
+            company_type: '', // Added
+            sector: '', // Added
         });
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="w-full max-w-4xl bg-white rounded-lg shadow-md max-h-[90vh] overflow-auto">
-                <div className="p-2 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-                    <h1 className="text-lg font-bold text-gray-900">Company General Information</h1>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-                        <X className="h-4 w-4" />
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl max-h-[95vh] overflow-y-auto">
+                <div className="p-2 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
+                    <h1 className="pl-6 text-2xl font-semibold text-gray-800">Create Company</h1>
+                    <button
+                        onClick={onClose}
+                        className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                    >
+                        <X className="h-5 w-5 text-gray-600" />
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-3">
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <form onSubmit={handleSubmit} className="p-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Left Column */}
-                        <div className="space-y-2">
+                        <div className="space-y-5">
+                            {/* PAN No */}
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Code:</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Company PAN No<span className="text-red-500">*</span>:
+                                </label>
                                 <input
                                     type="text"
-                                    name="code"
-                                    value={formData.code}
+                                    name="pan_no"
+                                    value={formData.pan_no}
                                     onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Code"
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    placeholder="Enter 10 digit PAN No"
+                                    maxLength={10}
+                                    required
                                 />
                             </div>
-
+                            {/* TAN No */}
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Name:</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Company TAN No<span className="text-red-500">*</span>:
+                                </label>
                                 <input
                                     type="text"
-                                    name="name"
-                                    value={formData.name}
+                                    name="tan_no"
+                                    value={formData.tan_no}
                                     onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Name"
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    placeholder="Enter 10 digit TAN No"
+                                    maxLength={10}
+                                    required
                                 />
                             </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Address:</label>
-                                <input
-                                    type="text"
-                                    name="address"
-                                    value={formData.address}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Address"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Email:</label>
-                                <input
-                                    type="email"
-                                    name="email"
-                                    value={formData.email}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Email"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Phone:</label>
-                                <input
-                                    type="tel"
-                                    name="phone"
-                                    value={formData.phone}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Phone"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">PF Code:</label>
-                                <input
-                                    type="text"
-                                    name="pfCode"
-                                    value={formData.pfCode}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="PF Code"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">ESI Code:</label>
-                                <input
-                                    type="text"
-                                    name="esiCode"
-                                    value={formData.esiCode}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="ESI Code"
-                                />
-                            </div>
+                            {[
+                                { name: 'code', label: 'Code', type: 'text', required: true },
+                                { name: 'name', label: 'Name', type: 'text' },
+                                { name: 'address', label: 'Address', type: 'text' },
+                                { name: 'email', label: 'Email', type: 'email' },
+                                { name: 'phone', label: 'Phone', type: 'tel' },
+                                { name: 'pf_code', label: 'PF Code', type: 'text' },
+                                { name: 'esi_code', label: 'ESI Code', type: 'text' },
+                            ].map((field) => (
+                                <div key={field.name}>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                        {field.label}{field.required && <span className="text-red-500">*</span>}:
+                                    </label>
+                                    <input
+                                        type={field.type}
+                                        name={field.name}
+                                        value={formData[field.name as keyof CompanyFormData] as string}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        placeholder={field.label}
+                                        required={field.required}
+                                    />
+                                </div>
+                            ))}
                         </div>
 
                         {/* Right Column */}
-                        <div className="space-y-2">
+                        <div className="space-y-5">
+                            {/* Company Type Dropdown */}
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Labour License:</label>
-                                <input
-                                    type="text"
-                                    name="labourLicense"
-                                    value={formData.labourLicense}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Labour License"
-                                />
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Company Type<span className="text-red-500">*</span>:
+                                </label>
+                                <select
+                                    name="company_type"
+                                    value={formData.company_type}
+                                    onChange={handleSelectChange}
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    required
+                                >
+                                    <option value="">Select Type</option>
+                                    <option value="Partnership">Partnership</option>
+                                    <option value="Private Limited">Private Limited</option>
+                                    <option value="Public Limited">Public Limited</option>
+                                    <option value="LLP">LLP</option>
+                                    <option value="Sole Proprietorship">Sole Proprietorship</option>
+                                </select>
                             </div>
-
+                            {/* Sector Dropdown */}
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Domain Name:</label>
-                                <input
-                                    type="text"
-                                    name="domainName"
-                                    value={formData.domainName}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Domain Name"
-                                />
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Sector<span className="text-red-500">*</span>:
+                                </label>
+                                <select
+                                    name="sector"
+                                    value={formData.sector}
+                                    onChange={handleSelectChange}
+                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    required
+                                >
+                                    <option value="">Select Sector</option>
+                                    <option value="Manufacturing">Manufacturing</option>
+                                    <option value="IT">IT</option>
+                                    <option value="Finance">Finance</option>
+                                    <option value="Healthcare">Healthcare</option>
+                                    <option value="Education">Education</option>
+                                    <option value="Retail">Retail</option>
+                                </select>
                             </div>
-
+                            {[
+                                { name: 'labour_license', label: 'Labour License', type: 'text' },
+                                { name: 'domain_name', label: 'Domain Name', type: 'text' },
+                                { name: 'contact_person', label: 'Contact Person', type: 'text' },
+                                { name: 'website', label: 'Website', type: 'url' },
+                                { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
+                                { name: 'password', label: 'Password', type: 'password' },
+                            ].map((field) => (
+                                <div key={field.name}>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                        {field.label}:
+                                    </label>
+                                    <input
+                                        type={field.type}
+                                        name={field.name}
+                                        value={formData[field.name as keyof CompanyFormData] as string}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        placeholder={field.label}
+                                    />
+                                </div>
+                            ))}
                             <div>
-                                <label className="block text-xs font-medium text-gray-700">Contact Person:</label>
-                                <input
-                                    type="text"
-                                    name="contactPerson"
-                                    value={formData.contactPerson}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Contact Person"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Website:</label>
-                                <input
-                                    type="url"
-                                    name="website"
-                                    value={formData.website}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Website"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Super Admin ID:</label>
-                                <input
-                                    type="text"
-                                    name="superAdminId"
-                                    value={formData.superAdminId}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Super Admin ID"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Password:</label>
-                                <input
-                                    type="password"
-                                    name="password"
-                                    value={formData.password}
-                                    onChange={handleInputChange}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                    placeholder="Password"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-medium text-gray-700">Upload Logo:</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Upload Logo:
+                                </label>
                                 <input
                                     type="file"
                                     name="logo"
                                     onChange={handleFileChange}
-                                    className="w-full text-xs"
+                                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
                                     accept="image/*"
                                 />
                             </div>
                         </div>
                     </div>
 
-                    <div className="mt-2">
-                        <label className="flex items-center space-x-2">
+                    <div className="mt-6">
+                        <label className="flex items-center space-x-3">
                             <input
                                 type="checkbox"
                                 name="inviteAdmin"
                                 checked={formData.inviteAdmin}
                                 onChange={handleInputChange}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span className="text-xs text-gray-700">Invite Admin</span>
+                            <span className="text-sm text-gray-700">Invite Admin via Email</span>
                         </label>
                     </div>
 
                     {error && (
-                        <div className="mt-2 text-sm text-red-600">
+                        <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
                             {error}
                         </div>
                     )}
 
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-8 flex gap-3 flex-wrap">
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            className="px-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:bg-blue-400"
                         >
-                            {company ? (isSubmitting ? 'Updating...' : 'Update') : (isSubmitting ? 'Saving...' : 'Save')}
-                        </button>
-                        <button
-                            type="button"
-                            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                        >
-                            Save & New
+                            {company?.id ? (isSubmitting ? 'Updating...' : 'Update Company') : (isSubmitting ? 'Saving...' : 'Create Company')}
                         </button>
                         <button
                             type="button"
                             onClick={handleReset}
-                            className="px-3 py-1 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2"
+                            className="px-6 py-2.5 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:ring-4 focus:ring-gray-200 transition-all"
                         >
-                            Reset
+                            Reset Form
                         </button>
+                        {company?.id && (
+                            <button
+                                type="button"
+                                className="px-6 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 focus:ring-4 focus:ring-red-200 transition-all"
+                            >
+                                Delete Company
+                            </button>
+                        )}
                         <button
                             type="button"
-                            className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                            onClick={onClose}
+                            className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:ring-4 focus:ring-gray-200 transition-all"
                         >
-                            Delete
+                            Cancel
                         </button>
                     </div>
                 </form>

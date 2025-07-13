@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, MoreVertical, ChevronLeft } from 'lucide-react';
+import axios from 'axios';
+import { Building2, ChevronLeft, MoreVertical } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import type { Company } from '../types';
 import CreateCompany from './CreateCompany';
-import axios from 'axios';
 
 export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => void }) {
     const [currentPage, setCurrentPage] = useState(1);
@@ -26,8 +26,8 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
             setLoading(true);
             setError(null);
             try {
-                const response = await axios.get('https://sec.pacehrm.com/api/companies');
-                // const response = await axios.get('http://localhost:5000/api/companies');
+                // const response = await axios.get('https://sec.pacehrm.com/api/companies');
+                const response = await axios.get('http://localhost:5000/api/companies');
 
                 const sortedCompanies = response.data.sort((a: Company, b: Company) => {
                     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -164,8 +164,8 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                             </div>
                                         </div>
                                         <div className="flex gap-2 relative">
-                                            <a 
-                                                href={`${company.domainName}?superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
+                                            <a
+                                                href={`${company.domain_name}?superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="px-4 py-2 text-blue-500 border border-blue-500 rounded hover:bg-blue-50"
@@ -207,11 +207,10 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                 <button
                                     key={page}
                                     onClick={() => setCurrentPage(page)}
-                                    className={`px-3 py-1 rounded ${
-                                        currentPage === page
-                                            ? 'bg-blue-500 text-white'
-                                            : 'bg-white text-gray-600 hover:bg-gray-100'
-                                    }`}
+                                    className={`px-3 py-1 rounded ${currentPage === page
+                                        ? 'bg-blue-500 text-white'
+                                        : 'bg-white text-gray-600 hover:bg-gray-100'
+                                        }`}
                                 >
                                     {page}
                                 </button>

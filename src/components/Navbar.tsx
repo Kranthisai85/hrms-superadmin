@@ -1,5 +1,4 @@
-import React from 'react';
-import { Menu, Home, Building2, LogOut, Users, Shield } from 'lucide-react';
+import { Building2, Home, LogOut, Menu, Users } from 'lucide-react';
 import type { PageType } from '../types';
 
 interface NavbarProps {
@@ -26,8 +25,8 @@ export default function Navbar({ onNavigate, onLogout }: NavbarProps) {
         <ul className="space-y-2">
           {/* Home Navigation */}
           <li>
-            <button 
-              onClick={() => onNavigate('home')} 
+            <button
+              onClick={() => onNavigate('home')}
               className="flex items-center gap-2 p-2 rounded hover:bg-gray-800 w-full"
             >
               <Home className="h-5 w-5" />
@@ -52,7 +51,7 @@ export default function Navbar({ onNavigate, onLogout }: NavbarProps) {
                   </button>
                 </li> */}
                 <li>
-                  <button 
+                  <button
                     onClick={() => onNavigate('companies')}
                     className="block p-1 rounded hover:bg-gray-800 w-full text-left"
                   >
@@ -64,23 +63,23 @@ export default function Navbar({ onNavigate, onLogout }: NavbarProps) {
           </li>
 
           {/* Users & Roles Section */}
-        {/*  <li>
+          <li>
             <div className="p-2">
               <div className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
                 Users & Roles
               </div>
-              <ul className="ml-7 mt-2 space-y-1"> */}
+              <ul className="ml-7 mt-2 space-y-1">
                 {/* <li>
-                  <button 
+                  <button
                     onClick={() => onNavigate('users')}
                     className="block p-1 rounded hover:bg-gray-800 w-full text-left"
                   >
                     Manage Users
                   </button>
                 </li> */}
-                {/*<li>
-                  <button 
+                <li>
+                  <button
                     onClick={() => onNavigate('roles')}
                     className="block p-1 rounded hover:bg-gray-800 w-full text-left"
                   >
@@ -89,12 +88,12 @@ export default function Navbar({ onNavigate, onLogout }: NavbarProps) {
                 </li>
               </ul>
             </div>
-          </li>*/}
+          </li>
 
           {/* Logout Section */}
           <li>
-            <button 
-              onClick={handleLogout} 
+            <button
+              onClick={handleLogout}
               className="flex items-center gap-2 p-2 rounded hover:bg-gray-800 w-full"
             >
               <LogOut className="h-5 w-5" />

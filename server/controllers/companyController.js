@@ -3,8 +3,8 @@ import db from '../config/db.js';
 export const createCompany = async (req, res) => {
   const {
     code, name, address, email, phone, password,
-    pfCode, esiCode, labourLicense, domainName,
-    contactPerson, website, superAdminId, logo, createdAt, updatedAt // Use superAdminId (lowercase "d")
+    pf_code, esi_code, labour_license, domain_name,
+    contact_person, website, super_admin_id, logo, createdAt, updatedAt // Use superAdminId (lowercase "d")
   } = req.body;
 
   try {
@@ -12,11 +12,11 @@ export const createCompany = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO companies 
-      (code, name, address, email, phone, password, pfCode, esiCode, labourLicense, domainName, 
-       contactPerson, website, superAdminID, logo) 
+      (code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name, 
+       contact_person,website, super_admin_id,  logo) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, name, address, email, phone, password, pfCode, esiCode, labourLicense, domainName,
-       contactPerson, website, superAdminId, logo] // Pass superAdminId here
+      [code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name,
+        contact_person, website, super_admin_id, logo] // Pass superAdminId here
     );
 
     const companyId = result.insertId;
@@ -31,7 +31,9 @@ export const createCompany = async (req, res) => {
 
 export const getCompanies = async (req, res) => {
   try {
+    console.log("companies");
     const [companies] = await db.query('SELECT * FROM companies');
+    console.log(companies);
     res.status(200).json(companies);
   } catch (err) {
     res.status(500).json({ error: err.message });
