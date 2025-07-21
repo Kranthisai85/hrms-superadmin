@@ -15,7 +15,13 @@ export interface Company {
   password: string;
   logo: string;
   edition: string;
-  createdAt: string;
+  created_at: string;
+  // Add missing fields for CreateCompany compatibility
+  invite_admin: number;
+  pan_no: string;
+  tan_no: string;
+  company_type: string;
+  sector: string;
 }
 
 export interface User {

@@ -1,8 +1,67 @@
 import axios from 'axios';
 import { Building2, ChevronLeft, MoreVertical } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { Company } from '../types';
 import CreateCompany from './CreateCompany';
+import { API_BASE_URL } from '../config';
+import { RelativeTime } from './RelativeTime';
+
+// CompanyMenu component for action popup
+function CompanyMenu({ onUpdate, onDelete, onClose }: { onUpdate: () => void; onDelete: () => void; onClose: () => void }) {
+    const menuRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [onClose]);
+    return (
+        <div ref={menuRef} className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg z-20 animate-fade-in">
+            <button
+                onClick={onUpdate}
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+                Update Details
+            </button>
+            <button
+                onClick={onDelete}
+                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-100 transition-colors"
+            >
+                Delete Company
+            </button>
+        </div>
+    );
+}
+
+// ConfirmDialog component for delete confirmation
+function ConfirmDialog({ open, onConfirm, onCancel }: { open: boolean; onConfirm: () => void; onCancel: () => void }) {
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black bg-opacity-40 animate-fade-in">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+                <h2 className="text-lg font-semibold mb-2">Delete Company?</h2>
+                <p className="text-gray-600 mb-4">Are you sure you want to delete this company? This action cannot be undone.</p>
+                <div className="flex justify-end gap-2">
+                    <button
+                        onClick={onCancel}
+                        className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 transition-colors"
+                    >
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => void }) {
     const [currentPage, setCurrentPage] = useState(1);
@@ -14,6 +73,9 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
     const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
     const [companyToUpdate, setCompanyToUpdate] = useState<Company | null>(null);
     const [searchQuery, setSearchQuery] = useState(''); // For search input
+    const [, setUpdateLoading] = useState(false); // For update modal loading
+    const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+    const [companyIdToDelete, setCompanyIdToDelete] = useState<string | null>(null);
 
     const companiesPerPage = 3;
     const indexOfLastCompany = currentPage * companiesPerPage;
@@ -26,17 +88,19 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
             setLoading(true);
             setError(null);
             try {
-                // const response = await axios.get('https://sec.pacehrm.com/api/companies');
-                const response = await axios.get('http://localhost:5000/api/companies');
+                const response = await axios.get(`${API_BASE_URL}/companies`);
 
                 const sortedCompanies = response.data.sort((a: Company, b: Company) => {
-                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                 });
                 setCompanies(sortedCompanies);
                 setFilteredCompanies(sortedCompanies); // Initialize filtered companies
             } catch (err: any) {
-                console.error('Error fetching companies:', err);
-                setError(err.message || 'Failed to fetch companies. Please try again.');
+                if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.error) {
+                    setError(err.response.data.error);
+                } else {
+                    setError('Failed to fetch companies. Please try again.');
+                }
             } finally {
                 setLoading(false);
             }
@@ -57,25 +121,55 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
         setCurrentPage(1); // Reset to the first page after filtering
     };
 
-    const handleUpdate = (company: Company) => {
-        setCompanyToUpdate(company); // Set the company to update
-        setShowCreateModal(true); // Open the modal
+    const handleUpdate = async (company: Company) => {
+        setUpdateLoading(true);
+        try {
+            // Fetch latest company details from backend
+            const response = await axios.get(`${API_BASE_URL}/companies/${company.id}`);
+            setCompanyToUpdate(response.data); // Set the latest company data
+            setShowCreateModal(true); // Open the modal
+        } catch (err) {
+            alert('Failed to fetch latest company details.');
+        } finally {
+            setUpdateLoading(false);
+        }
     };
 
     const handleDelete = (companyId: string) => {
-        if (window.confirm('Are you sure you want to delete this company?')) {
-            try {
-                axios.delete(`https://sec.pacehrm.com/api/companies/${companyId}`);
-                // axios.delete(`http://localhost:5000/api/companies/${companyId}`);
-
-                setCompanies(companies.filter((company) => company.id !== companyId));
-                setFilteredCompanies(filteredCompanies.filter((company) => company.id !== companyId));
+        setCompanyIdToDelete(companyId);
+        setShowConfirmDialog(true);
+    };
+    const confirmDelete = () => {
+        if (!companyIdToDelete) return;
+        axios.delete(`${API_BASE_URL}/companies/${companyIdToDelete}`)
+            .then(() => {
+                setCompanies(companies.filter((company) => company.id !== companyIdToDelete));
+                setFilteredCompanies(filteredCompanies.filter((company) => company.id !== companyIdToDelete));
+                setShowConfirmDialog(false);
+                setCompanyIdToDelete(null);
                 alert('Company deleted successfully.');
-            } catch (err) {
-                console.error('Error deleting company:', err);
-                alert('Failed to delete company. Please try again.');
-            }
-        }
+            })
+            .catch((err) => {
+                if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.error) {
+                    setError(err.response.data.error);
+                } else {
+                    setError('Failed to delete company. Please try again.');
+                }
+                setShowConfirmDialog(false);
+                setCompanyIdToDelete(null);
+            });
+    };
+    const cancelDelete = () => {
+        setShowConfirmDialog(false);
+        setCompanyIdToDelete(null);
+    };
+
+    // Callback to update company in state after update
+    const handleCompanyUpdated = (updatedCompany: Company) => {
+        setCompanies((prev) => prev.map((c) => c.id === updatedCompany.id ? updatedCompany : c));
+        setFilteredCompanies((prev) => prev.map((c) => c.id === updatedCompany.id ? updatedCompany : c));
+        setShowCreateModal(false);
+        setCompanyToUpdate(null);
     };
 
     const navigate = onNavigateBack; // Use the provided navigation function
@@ -145,16 +239,7 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-gray-500">
-                                                    Organization created on{' '}
-                                                    {new Date(company.createdAt).toLocaleString('en-IN', {
-                                                        timeZone: 'Asia/Kolkata',
-                                                        year: 'numeric',
-                                                        month: 'long',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit',
-                                                        second: '2-digit',
-                                                    })}
+                                                    Organization created <RelativeTime date={company.created_at} />
                                                 </p>
                                                 <p className="text-sm text-gray-500">Organization ID: {company.id}</p>
                                                 <p className="text-sm text-gray-500">Address: {company.address}</p>
@@ -165,7 +250,7 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                         </div>
                                         <div className="flex gap-2 relative">
                                             <a
-                                                href={`${company.domain_name}?superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
+                                                href={`https://${company.domain_name}?superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="px-4 py-2 text-blue-500 border border-blue-500 rounded hover:bg-blue-50"
@@ -179,20 +264,17 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                                 <MoreVertical className="w-5 h-5" />
                                             </button>
                                             {selectedCompany === company.id && (
-                                                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg z-10">
-                                                    <button
-                                                        onClick={() => handleUpdate(company)}
-                                                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                                    >
-                                                        Update Details
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(company.id)}
-                                                        className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-100"
-                                                    >
-                                                        Delete Company
-                                                    </button>
-                                                </div>
+                                                <CompanyMenu
+                                                    onUpdate={() => {
+                                                        setSelectedCompany(null);
+                                                        handleUpdate(company);
+                                                    }}
+                                                    onDelete={() => {
+                                                        setSelectedCompany(null);
+                                                        handleDelete(company.id);
+                                                    }}
+                                                    onClose={() => setSelectedCompany(null)}
+                                                />
                                             )}
                                         </div>
                                     </div>
@@ -226,9 +308,19 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                         setShowCreateModal(false);
                         setCompanyToUpdate(null);
                     }}
-                    company={companyToUpdate}
+                    company={
+                        companyToUpdate
+                            ? { ...companyToUpdate, invite_admin: Boolean(companyToUpdate.invite_admin) }
+                            : null
+                    }
+                    onCompanyUpdated={handleCompanyUpdated}
                 />
             )}
+            <ConfirmDialog
+                open={showConfirmDialog}
+                onConfirm={confirmDelete}
+                onCancel={cancelDelete}
+            />
         </div>
     );
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Mail } from 'lucide-react';
 import axios from 'axios'; // Import axios for making HTTP requests
+import { AUTH_URL } from '../config';
 
 export default function LoginForm({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
@@ -20,7 +21,7 @@ export default function LoginForm({ onLogin }: { onLogin: () => void }) {
 
     try {
       // Send a POST request to your backend login endpoint
-      const response = await axios.post('https://sec.pacehrm.com/api/auth/login', {
+      const response = await axios.post(AUTH_URL, {
         email,
         password,
       });

@@ -1,46 +1,69 @@
 import db from '../config/db.js';
 
-export const createCompany = async (req, res) => {
+export const createCompany = async (req, res, next) => {
   const {
     code, name, address, email, phone, password,
     pf_code, esi_code, labour_license, domain_name,
-    contact_person, website, super_admin_id, logo, createdAt, updatedAt // Use superAdminId (lowercase "d")
+    contact_person, website, super_admin_id, logo, createdAt, updatedAt,
+    pan_no, tan_no, company_type, sector, // new fields
+    // For user:
+    last_name, date_of_birth, gender, blood_group
   } = req.body;
 
   try {
-    console.log("Received Data:", req.body); // ✅ Log incoming request data
+    // 1. Insert user
+    const [userResult] = await db.query(
+      `INSERT INTO users (name, last_name, email, password, role, phone, status, created_at, updated_at, date_of_birth, gender, blood_group)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
+      [
+        contact_person || name,
+        last_name || '',
+        email,
+        password,
+        'super_admin',
+        phone,
+        'Active',
+        date_of_birth || null,
+        gender || null,
+        blood_group || null
+      ]
+    );
+    const superAdminId = userResult.insertId;
 
+    // 2. Insert company (with all fields)
     const [result] = await db.query(
       `INSERT INTO companies 
       (code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name, 
-       contact_person,website, super_admin_id,  logo) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name,
-        contact_person, website, super_admin_id, logo] // Pass superAdminId here
+       contact_person, website, super_admin_id, logo, pan_no, tan_no, company_type, sector, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name,
+        contact_person, website, superAdminId, logo, pan_no, tan_no, company_type, sector
+      ]
     );
 
     const companyId = result.insertId;
     const [company] = await db.query('SELECT * FROM companies WHERE id = ?', [companyId]);
 
-    res.status(201).json({ message: 'Company created successfully', company: company[0] });
+    res.status(201).json({ message: 'Company and super admin created successfully', company: company[0] });
   } catch (err) {
-    console.error("Error creating company:", err); // ✅ Log the error details
-    res.status(500).json({ error: err.message });
+    console.error("Error creating company:", err);
+    next(err);
   }
 };
 
-export const getCompanies = async (req, res) => {
+export const getCompanies = async (req, res, next) => {
   try {
     console.log("companies");
     const [companies] = await db.query('SELECT * FROM companies');
     console.log(companies);
     res.status(200).json(companies);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 };
 //gte company by id
-export const getCompanyById = async (req, res) => {
+export const getCompanyById = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
 
   try {
@@ -52,39 +75,45 @@ export const getCompanyById = async (req, res) => {
 
     res.status(200).json(company[0]);
   } catch (err) {
-    console.error("Error fetching company by ID:", err); // ✅ Log the error details
-    res.status(500).json({ error: err.message });
+    console.error("Error fetching company by ID:", err);
+    next(err);
   }
 };
 
 // Update a company by ID
-export const updateCompany = async (req, res) => {
+export const updateCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
   const updatedData = req.body; // Get the updated data from the request body
-  console.log("Updated Data:", updatedData); // ✅ Log the updated data
-  console.log("dat from fromtend:", req.body); // ✅ Log the company ID
-  // Check if updatedData is empty
-  if (!Object.keys(updatedData).length) {
-    return res.status(400).json({ error: 'No data provided for update' });
+  // Only allow updating the fields that exist in the DB
+  const allowedFields = [
+    'code', 'name', 'address', 'email', 'phone', 'password',
+    'pf_code', 'esi_code', 'labour_license', 'domain_name',
+    'contact_person', 'website', 'super_admin_id', 'logo',
+    'pan_no', 'tan_no', 'company_type', 'sector',
+    'created_at', 'updated_at'
+  ];
+  const filteredData = {};
+  for (const key of allowedFields) {
+    if (updatedData[key] !== undefined) filteredData[key] = updatedData[key];
   }
-
+  if (!Object.keys(filteredData).length) {
+    return res.status(400).json({ error: 'No valid data provided for update' });
+  }
   try {
-    const [result] = await db.query('UPDATE companies SET ? WHERE id = ?', [updatedData, id]);
-
+    const [result] = await db.query('UPDATE companies SET ? WHERE id = ?', [filteredData, id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Company not found' });
     }
-
     const [updatedCompany] = await db.query('SELECT * FROM companies WHERE id = ?', [id]);
     res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
   } catch (err) {
-    console.error("Error updating company:", err); // ✅ Log the error details
-    res.status(500).json({ error: err.message });
+    console.error("Error updating company:", err);
+    next(err);
   }
 };
 
 // Delete a company by ID
-export const deleteCompany = async (req, res) => {
+export const deleteCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
 
   try {
@@ -96,7 +125,7 @@ export const deleteCompany = async (req, res) => {
 
     res.status(200).json({ message: 'Company deleted successfully' });
   } catch (err) {
-    console.error("Error deleting company:", err); // ✅ Log the error details
-    res.status(500).json({ error: err.message });
+    console.error("Error deleting company:", err);
+    next(err);
   }
 };

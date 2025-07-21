@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL, LOGO_UPLOAD_URL, EMAIL_SEND_URL } from '../config';
 
 interface CompanyFormData {
     code: string;
@@ -17,7 +18,7 @@ interface CompanyFormData {
     super_admin_id: string;
     password: string;
     logo: File | null;
-    inviteAdmin: boolean;
+    invite_admin: boolean;
     pan_no: string; // Added
     tan_no: string; // Added
     company_type: string; // Added
@@ -42,10 +43,16 @@ interface CreateCompanyProps {
         super_admin_id: string;
         password: string;
         logo: string;
+        invite_admin: boolean; // Added
+        pan_no: string; // Added
+        tan_no: string; // Added
+        company_type: string; // Added
+        sector: string; // Added
     } | null; // Optional company for updating
+    onCompanyUpdated?: (updatedCompany: any) => void; // Add this line
 }
 
-export default function CreateCompany({ onClose, company }: CreateCompanyProps): JSX.Element {
+export default function CreateCompany({ onClose, company, onCompanyUpdated }: CreateCompanyProps): JSX.Element {
     const [formData, setFormData] = useState<CompanyFormData>({
         code: '',
         name: '',
@@ -61,7 +68,7 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
         super_admin_id: '',
         password: '',
         logo: null,
-        inviteAdmin: false,
+        invite_admin: false,
         pan_no: '', // Added
         tan_no: '', // Added
         company_type: '', // Added
@@ -85,11 +92,11 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                 super_admin_id: company.super_admin_id || '',
                 password: company.password || '',
                 logo: null,
-                inviteAdmin: false,
-                pan_no: '', // Added
-                tan_no: '', // Added
-                company_type: '', // Added
-                sector: '', // Added
+                invite_admin: Boolean(Number(company.invite_admin)),
+                pan_no: company.pan_no || '',
+                tan_no: company.tan_no || '',
+                company_type: company.company_type || '',
+                sector: company.sector || '',
             });
         }
     }, [company]);
@@ -127,7 +134,7 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
         logoFormData.append('file', logo);
 
         try {
-            const response = await axios.post('https://sec.pacehrm.com/api/logo', logoFormData, {
+            const response = await axios.post(LOGO_UPLOAD_URL, logoFormData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -186,7 +193,11 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
         const formDataToSend = new FormData();
         Object.entries(formData).forEach(([key, value]) => {
             if (key === 'logo') {
-                formDataToSend.append('logo', logoUrl || '');
+                if (logoUrl) {
+                    formDataToSend.append('logo', logoUrl);
+                }
+            } else if (key === 'invite_admin') {
+                formDataToSend.append('invite_admin', value ? '1' : '0');
             } else if (value !== null && value !== undefined) {
                 formDataToSend.append(key, value);
             }
@@ -196,11 +207,12 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
             let response;
             if (company) {
                 // Update company if `company` prop is provided
+                // Convert FormData to plain object for JSON
+                const plainData: any = {};
+                formDataToSend.forEach((v, k) => { plainData[k] = v; });
                 response = await axios.put(
-                    `https://sec.pacehrm.com/api/companies/${company.id}`,
-                    // `http://localhost:5000/api/companies/${company.id}`,
-
-                    Object.fromEntries(formDataToSend.entries()),
+                    `${API_BASE_URL}/companies/${company.id}`,
+                    plainData,
                     {
                         headers: {
                             'Content-Type': 'application/json',
@@ -208,11 +220,12 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                     }
                 );
                 alert('Company updated successfully!');
+                if (onCompanyUpdated) {
+                    onCompanyUpdated(response.data.company || response.data); // Call callback with updated company
+                }
             } else {
                 // Create a new company
-                // response = await axios.post('https://sec.pacehrm.com/api/companies', formDataToSend, {
-                response = await axios.post('http://localhost:5000/api/companies', formDataToSend, {
-
+                response = await axios.post(`${API_BASE_URL}/companies`, formDataToSend, {
                     headers: {
                         'Content-Type': 'multipart/form-data',
                     },
@@ -221,8 +234,8 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
             }
 
             // Send email if `inviteAdmin` is checked
-            if (formData.inviteAdmin) {
-                await axios.post('https://sec.pacehrm.com/api/email/send', {
+            if (formData.invite_admin) {
+                await axios.post(EMAIL_SEND_URL, {
                     to: formData.email,
                     companyName: formData.name,
                     subdomain: formData.domain_name,
@@ -233,9 +246,12 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                 alert('Invitation email sent successfully!');
             }
 
-            window.location.reload();
         } catch (err: any) {
-            setError('Failed to save company or send email. Please try again.');
+            if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.error) {
+                setError(err.response.data.error);
+            } else {
+                setError('Failed to save company or send email. Please try again.');
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -257,7 +273,7 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
             super_admin_id: '',
             password: '',
             logo: null,
-            inviteAdmin: false,
+            invite_admin: false,
             pan_no: '', // Added
             tan_no: '', // Added
             company_type: '', // Added
@@ -282,6 +298,75 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Left Column */}
                         <div className="space-y-5">
+                            {[
+                                { name: 'code', label: 'Code', type: 'text', required: true },
+                                { name: 'name', label: 'Name', type: 'text' },
+                                { name: 'address', label: 'Address', type: 'text' },
+                                { name: 'email', label: 'Email', type: 'email' },
+                                { name: 'phone', label: 'Phone', type: 'tel' },
+                                { name: 'pf_code', label: 'PF Code', type: 'text' },
+                                { name: 'esi_code', label: 'ESI Code', type: 'text' },
+                            ].map((field) => (
+                                <div key={field.name}>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                        {field.label}{field.required && <span className="text-red-500">*</span>}:
+                                    </label>
+                                    <input
+                                        type={field.type}
+                                        name={field.name}
+                                        value={formData[field.name as keyof CompanyFormData] as string}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        placeholder={field.label}
+                                        required={field.required}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Right Column */}
+                        <div className="space-y-5">
+                            {[
+                                { name: 'labour_license', label: 'Labour License', type: 'text' },
+                                { name: 'domain_name', label: 'Domain Name', type: 'text' },
+                                { name: 'contact_person', label: 'Contact Person', type: 'text' },
+                                { name: 'website', label: 'Website', type: 'url' },
+                                { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
+                                { name: 'password', label: 'Password', type: 'password' },
+                            ].map((field) => (
+                                <div key={field.name}>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                        {field.label}:
+                                    </label>
+                                    <input
+                                        type={field.type}
+                                        name={field.name}
+                                        value={formData[field.name as keyof CompanyFormData] as string}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        placeholder={field.label}
+                                    />
+                                </div>
+                            ))}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Upload Logo:
+                                </label>
+                                <input
+                                    type="file"
+                                    name="logo"
+                                    onChange={handleFileChange}
+                                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
+                                    accept="image/*"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Additional Fields Section */}
+                    <div className="mt-8 border-t border-gray-200 pt-6">
+                        <h3 className="text-lg font-medium text-gray-800 mb-4">Additional Information</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* PAN No */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -314,34 +399,6 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                                     required
                                 />
                             </div>
-                            {[
-                                { name: 'code', label: 'Code', type: 'text', required: true },
-                                { name: 'name', label: 'Name', type: 'text' },
-                                { name: 'address', label: 'Address', type: 'text' },
-                                { name: 'email', label: 'Email', type: 'email' },
-                                { name: 'phone', label: 'Phone', type: 'tel' },
-                                { name: 'pf_code', label: 'PF Code', type: 'text' },
-                                { name: 'esi_code', label: 'ESI Code', type: 'text' },
-                            ].map((field) => (
-                                <div key={field.name}>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        {field.label}{field.required && <span className="text-red-500">*</span>}:
-                                    </label>
-                                    <input
-                                        type={field.type}
-                                        name={field.name}
-                                        value={formData[field.name as keyof CompanyFormData] as string}
-                                        onChange={handleInputChange}
-                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                        placeholder={field.label}
-                                        required={field.required}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Right Column */}
-                        <div className="space-y-5">
                             {/* Company Type Dropdown */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -383,40 +440,6 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                                     <option value="Retail">Retail</option>
                                 </select>
                             </div>
-                            {[
-                                { name: 'labour_license', label: 'Labour License', type: 'text' },
-                                { name: 'domain_name', label: 'Domain Name', type: 'text' },
-                                { name: 'contact_person', label: 'Contact Person', type: 'text' },
-                                { name: 'website', label: 'Website', type: 'url' },
-                                { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
-                                { name: 'password', label: 'Password', type: 'password' },
-                            ].map((field) => (
-                                <div key={field.name}>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        {field.label}:
-                                    </label>
-                                    <input
-                                        type={field.type}
-                                        name={field.name}
-                                        value={formData[field.name as keyof CompanyFormData] as string}
-                                        onChange={handleInputChange}
-                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                        placeholder={field.label}
-                                    />
-                                </div>
-                            ))}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Upload Logo:
-                                </label>
-                                <input
-                                    type="file"
-                                    name="logo"
-                                    onChange={handleFileChange}
-                                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
-                                    accept="image/*"
-                                />
-                            </div>
                         </div>
                     </div>
 
@@ -424,8 +447,8 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                         <label className="flex items-center space-x-3">
                             <input
                                 type="checkbox"
-                                name="inviteAdmin"
-                                checked={formData.inviteAdmin}
+                                name="invite_admin"
+                                checked={formData.invite_admin}
                                 onChange={handleInputChange}
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
@@ -439,14 +462,15 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                         </div>
                     )}
 
-                    <div className="mt-8 flex gap-3 flex-wrap">
+                    <div className="mt-8 flex justify-between items-center">
                         <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="px-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:bg-blue-400"
+                            type="button"
+                            onClick={onClose}
+                            className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:ring-4 focus:ring-gray-200 transition-all"
                         >
-                            {company?.id ? (isSubmitting ? 'Updating...' : 'Update Company') : (isSubmitting ? 'Saving...' : 'Create Company')}
+                            Cancel
                         </button>
+                        <div className="flex gap-3">
                         <button
                             type="button"
                             onClick={handleReset}
@@ -454,6 +478,13 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                         >
                             Reset Form
                         </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="px-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:bg-blue-400"
+                            >
+                                {company?.id ? (isSubmitting ? 'Updating...' : 'Update Company') : (isSubmitting ? 'Saving...' : 'Create Company')}
+                            </button>
                         {company?.id && (
                             <button
                                 type="button"
@@ -462,13 +493,7 @@ export default function CreateCompany({ onClose, company }: CreateCompanyProps):
                                 Delete Company
                             </button>
                         )}
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:ring-4 focus:ring-gray-200 transition-all"
-                        >
-                            Cancel
-                        </button>
+                        </div>
                     </div>
                 </form>
             </div>
