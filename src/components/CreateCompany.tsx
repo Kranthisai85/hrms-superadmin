@@ -74,6 +74,8 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
         company_type: '', // Added
         sector: '', // Added
     });
+    // Add logoPreview state
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
     useEffect(() => {
         if (company) {
@@ -91,13 +93,17 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                 website: company.website || '',
                 super_admin_id: company.super_admin_id || '',
                 password: company.password || '',
-                logo: null,
+                logo: null, // Always null initially
                 invite_admin: Boolean(Number(company.invite_admin)),
                 pan_no: company.pan_no || '',
                 tan_no: company.tan_no || '',
                 company_type: company.company_type || '',
                 sector: company.sector || '',
             });
+            // Set logo preview to existing logo if present
+            setLogoPreview(company.logo ? company.logo : null);
+        } else {
+            setLogoPreview(null);
         }
     }, [company]);
 
@@ -122,10 +128,13 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
             setFormData((prev) => ({
                 ...prev,
-                logo: e.target.files![0],
+                logo: file,
             }));
+            // Show preview
+            setLogoPreview(URL.createObjectURL(file));
         }
     };
 
@@ -181,21 +190,22 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
         }
 
         let logoUrl = null;
-
+        // If a new logo is uploaded, upload it
         if (formData.logo) {
             logoUrl = await uploadLogo(formData.logo);
             if (!logoUrl) {
                 setIsSubmitting(false);
                 return;
             }
+        } else if (company && company.logo) {
+            // If editing and no new logo, keep the existing logo
+            logoUrl = company.logo;
         }
 
         const formDataToSend = new FormData();
         Object.entries(formData).forEach(([key, value]) => {
             if (key === 'logo') {
-                if (logoUrl) {
-                    formDataToSend.append('logo', logoUrl);
-                }
+                formDataToSend.append('logo', logoUrl || '');
             } else if (key === 'invite_admin') {
                 formDataToSend.append('invite_admin', value ? '1' : '0');
             } else if (value !== null && value !== undefined) {
@@ -279,6 +289,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
             company_type: '', // Added
             sector: '', // Added
         });
+        setLogoPreview(null);
     };
 
     return (
@@ -359,6 +370,16 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                     className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-colors"
                                     accept="image/*"
                                 />
+                                {/* Logo preview */}
+                                {logoPreview && (
+                                    <div className="mt-2">
+                                        <img
+                                            src={logoPreview}
+                                            alt="Logo Preview"
+                                            className="h-20 w-auto rounded border border-gray-200 shadow"
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
