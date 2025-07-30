@@ -142,21 +142,51 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
     const confirmDelete = () => {
         if (!companyIdToDelete) return;
         axios.delete(`${API_BASE_URL}/companies/${companyIdToDelete}`)
-            .then(() => {
+            .then((response) => {
                 setCompanies(companies.filter((company) => company.id !== companyIdToDelete));
                 setFilteredCompanies(filteredCompanies.filter((company) => company.id !== companyIdToDelete));
                 setShowConfirmDialog(false);
                 setCompanyIdToDelete(null);
-                alert('Company deleted successfully.');
+                alert(response.data.message || 'Company deleted successfully.');
             })
             .catch((err) => {
-                if (axios.isAxiosError(err) && err.response && err.response.data && err.response.data.error) {
-                    setError(err.response.data.error);
+                if (axios.isAxiosError(err) && err.response && err.response.data) {
+                    const errorData = err.response.data;
+                    if (errorData.hasUsers) {
+                        // Show cascade delete confirmation
+                        if (confirm(`${errorData.error}\n\nDo you want to delete the company and all ${errorData.userCount} associated users?`)) {
+                            // Proceed with cascade delete
+                            axios.delete(`${API_BASE_URL}/companies/${companyIdToDelete}?cascade=true`)
+                                .then((response) => {
+                                    setCompanies(companies.filter((company) => company.id !== companyIdToDelete));
+                                    setFilteredCompanies(filteredCompanies.filter((company) => company.id !== companyIdToDelete));
+                                    setShowConfirmDialog(false);
+                                    setCompanyIdToDelete(null);
+                                    alert(response.data.message || 'Company and users deleted successfully.');
+                                })
+                                .catch((cascadeErr) => {
+                                    if (axios.isAxiosError(cascadeErr) && cascadeErr.response && cascadeErr.response.data && cascadeErr.response.data.error) {
+                                        setError(cascadeErr.response.data.error);
+                                    } else {
+                                        setError('Failed to delete company and users. Please try again.');
+                                    }
+                                    setShowConfirmDialog(false);
+                                    setCompanyIdToDelete(null);
+                                });
+                        } else {
+                            setShowConfirmDialog(false);
+                            setCompanyIdToDelete(null);
+                        }
+                    } else {
+                        setError(errorData.error);
+                        setShowConfirmDialog(false);
+                        setCompanyIdToDelete(null);
+                    }
                 } else {
                     setError('Failed to delete company. Please try again.');
+                    setShowConfirmDialog(false);
+                    setCompanyIdToDelete(null);
                 }
-                setShowConfirmDialog(false);
-                setCompanyIdToDelete(null);
             });
     };
     const cancelDelete = () => {
@@ -250,7 +280,7 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                         </div>
                                         <div className="flex gap-2 relative">
                                             <a
-                                                href={`https://${company.domain_name}?superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
+                                                href={`https://${company.domain_name}?companyId=${encodeURIComponent(company.id)}&superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="px-4 py-2 text-blue-500 border border-blue-500 rounded hover:bg-blue-50"

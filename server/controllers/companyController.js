@@ -11,10 +11,24 @@ export const createCompany = async (req, res, next) => {
   } = req.body;
 
   try {
-    // 1. Insert user
+    // 1. First, create the company
+    const [companyResult] = await db.query(
+      `INSERT INTO companies 
+      (code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name, 
+       contact_person, website, logo, pan_no, tan_no, company_type, sector, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name,
+        contact_person, website, logo, pan_no, tan_no, company_type, sector
+      ]
+    );
+
+    const companyId = companyResult.insertId;
+
+    // 2. Then, create the user with company_id
     const [userResult] = await db.query(
-      `INSERT INTO users (name, last_name, email, password, role, phone, status, created_at, updated_at, date_of_birth, gender, blood_group)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
+      `INSERT INTO users (name, last_name, email, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
       [
         contact_person || name,
         last_name || '',
@@ -23,26 +37,22 @@ export const createCompany = async (req, res, next) => {
         'super_admin',
         phone,
         'Active',
+        companyId, // Add company_id to user
         date_of_birth || null,
         gender || null,
         blood_group || null
       ]
     );
+
     const superAdminId = userResult.insertId;
 
-    // 2. Insert company (with all fields)
-    const [result] = await db.query(
-      `INSERT INTO companies 
-      (code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name, 
-       contact_person, website, super_admin_id, logo, pan_no, tan_no, company_type, sector, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name,
-        contact_person, website, superAdminId, logo, pan_no, tan_no, company_type, sector
-      ]
+    // 3. Update the company with the super_admin_id
+    await db.query(
+      'UPDATE companies SET super_admin_id = ? WHERE id = ?',
+      [superAdminId, companyId]
     );
 
-    const companyId = result.insertId;
+    // 4. Fetch the complete company data
     const [company] = await db.query('SELECT * FROM companies WHERE id = ?', [companyId]);
 
     res.status(201).json({ message: 'Company and super admin created successfully', company: company[0] });
@@ -115,15 +125,43 @@ export const updateCompany = async (req, res, next) => {
 // Delete a company by ID
 export const deleteCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
+  const { cascade } = req.query; // Check if cascade delete is requested
 
   try {
-    const [result] = await db.query('DELETE FROM companies WHERE id = ?', [id]);
+    // First, check if there are any users associated with this company
+    const [users] = await db.query('SELECT COUNT(*) as userCount FROM users WHERE company_id = ?', [id]);
+    
+    if (users[0].userCount > 0) {
+      if (cascade === 'true') {
+        // Cascade delete: Delete users first, then company
+        await db.query('DELETE FROM users WHERE company_id = ?', [id]);
+        const [result] = await db.query('DELETE FROM companies WHERE id = ?', [id]);
+        
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ error: 'Company not found' });
+        }
+        
+        res.status(200).json({ 
+          message: `Company and ${users[0].userCount} associated users deleted successfully` 
+        });
+      } else {
+        // Return error with user count
+        return res.status(400).json({ 
+          error: `Cannot delete company. There are ${users[0].userCount} users associated with this company.`,
+          userCount: users[0].userCount,
+          hasUsers: true
+        });
+      }
+    } else {
+      // No users associated, proceed with deletion
+      const [result] = await db.query('DELETE FROM companies WHERE id = ?', [id]);
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Company not found' });
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      res.status(200).json({ message: 'Company deleted successfully' });
     }
-
-    res.status(200).json({ message: 'Company deleted successfully' });
   } catch (err) {
     console.error("Error deleting company:", err);
     next(err);
