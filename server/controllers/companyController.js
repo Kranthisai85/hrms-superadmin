@@ -66,7 +66,7 @@ export const getCompanies = async (req, res, next) => {
   try {
     console.log("companies");
     const [companies] = await db.query('SELECT * FROM companies');
-    console.log(companies);
+    // console.log(companies);
     res.status(200).json(companies);
   } catch (err) {
     next(err);

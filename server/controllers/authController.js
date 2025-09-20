@@ -145,6 +145,7 @@ export const login = async (req, res) => {
     }
 
     // Directly compare the plain-text password with the stored password
+    console.log(password, user[0].password);
     if (password !== user[0].password) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }

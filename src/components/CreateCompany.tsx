@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { X } from 'lucide-react';
+import { X, Eye, EyeOff } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { API_BASE_URL, LOGO_UPLOAD_URL, EMAIL_SEND_URL } from '../config';
 
@@ -109,6 +109,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
@@ -343,7 +344,6 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                 { name: 'contact_person', label: 'Contact Person', type: 'text' },
                                 { name: 'website', label: 'Website', type: 'url' },
                                 { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
-                                { name: 'password', label: 'Password', type: 'password' },
                             ].map((field) => (
                                 <div key={field.name}>
                                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -359,6 +359,34 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                     />
                                 </div>
                             ))}
+                            
+                            {/* Password field with eye toggle */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Password:
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        name="password"
+                                        value={formData.password}
+                                        onChange={handleInputChange}
+                                        className="w-full px-4 py-2.5 pr-12 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                        placeholder="Password"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 transition-colors"
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff className="h-5 w-5" />
+                                        ) : (
+                                            <Eye className="h-5 w-5" />
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                                     Upload Logo:
