@@ -14,30 +14,29 @@ export const createCompany = async (req, res, next) => {
     // 1. First, create the company
     const [companyResult] = await db.query(
       `INSERT INTO companies 
-      (code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name, 
-       contact_person, website, logo, pan_no, tan_no, company_type, sector, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      (code, name, address, pf_code, esi_code, labour_license, domain_name, 
+       website, logo, pan_no, tan_no, company_type, sector, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        code, name, address, email, phone, password, pf_code, esi_code, labour_license, domain_name,
-        contact_person, website, logo, pan_no, tan_no, company_type, sector
+        code, name, address, pf_code, esi_code, labour_license, domain_name,
+        website, logo, pan_no, tan_no, company_type, sector
       ]
     );
 
     const companyId = companyResult.insertId;
 
-    // 2. Then, create the user with company_id
+    // 2. Create admin user (only password, role, and basic info)
     const [userResult] = await db.query(
-      `INSERT INTO users (name, last_name, email, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
+      `INSERT INTO users (name, last_name, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
       [
         contact_person || name,
         last_name || '',
-        email,
         password,
-        'super_admin',
+        'admin',
         phone,
         'Active',
-        companyId, // Add company_id to user
+        companyId,
         date_of_birth || null,
         gender || null,
         blood_group || null
@@ -46,16 +45,57 @@ export const createCompany = async (req, res, next) => {
 
     const superAdminId = userResult.insertId;
 
-    // 3. Update the company with the super_admin_id
+    // 3. Create employee record (with email and other employee details)
+    const [employeeResult] = await db.query(
+      `INSERT INTO employees (
+        company_id, user_id, employee_code, first_name, last_name, email, phone, 
+        date_of_birth, gender, blood_group, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        companyId,
+        superAdminId,
+        code, // Using company code as employee code for admin
+        contact_person || name,
+        last_name || '',
+        email, // Email goes to employee table
+        phone,
+        date_of_birth || null,
+        gender || null,
+        blood_group || null,
+        'Active'
+      ]
+    );
+
+    const employeeId = employeeResult.insertId;
+
+    // 4. Update the company with the super_admin_id
     await db.query(
       'UPDATE companies SET super_admin_id = ? WHERE id = ?',
       [superAdminId, companyId]
     );
 
-    // 4. Fetch the complete company data
+    // 5. Fetch the complete data for API response
     const [company] = await db.query('SELECT * FROM companies WHERE id = ?', [companyId]);
+    const [user] = await db.query('SELECT * FROM users WHERE id = ?', [superAdminId]);
+    const [employee] = await db.query('SELECT * FROM employees WHERE id = ?', [employeeId]);
+    
+    // Merge company data with user and employee data for API compatibility
+    const responseCompany = {
+      ...company[0],
+      email: employee[0].email,       // From employee table
+      phone: employee[0].phone,       // From employee table  
+      password: user[0].password,     // From user table
+      contact_person: employee[0].first_name, // From employee table
+      super_admin_id: superAdminId,   // Set the super admin ID
+      employee_id: employeeId         // Include employee ID
+    };
 
-    res.status(201).json({ message: 'Company and super admin created successfully', company: company[0] });
+    res.status(201).json({ 
+      message: 'Company, admin user, and employee created successfully', 
+      company: responseCompany,
+      user_id: superAdminId,
+      employee_id: employeeId
+    });
   } catch (err) {
     console.error("Error creating company:", err);
     next(err);
@@ -65,8 +105,19 @@ export const createCompany = async (req, res, next) => {
 export const getCompanies = async (req, res, next) => {
   try {
     console.log("companies");
-    const [companies] = await db.query('SELECT * FROM companies');
-    // console.log(companies);
+    // Join companies with users and employees to get complete data
+    const [companies] = await db.query(`
+      SELECT 
+        c.*,
+        u.password,
+        e.email,
+        e.phone,
+        e.first_name as contact_person,
+        e.id as employee_id
+      FROM companies c
+      LEFT JOIN users u ON c.super_admin_id = u.id
+      LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+    `);
     res.status(200).json(companies);
   } catch (err) {
     next(err);
@@ -77,7 +128,20 @@ export const getCompanyById = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
 
   try {
-    const [company] = await db.query('SELECT * FROM companies WHERE id = ?', [id]);
+    // Join with users and employees to get complete data
+    const [company] = await db.query(`
+      SELECT 
+        c.*,
+        u.password,
+        e.email,
+        e.phone,
+        e.first_name as contact_person,
+        e.id as employee_id
+      FROM companies c
+      LEFT JOIN users u ON c.super_admin_id = u.id
+      LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+      WHERE c.id = ?
+    `, [id]);
 
     if (company.length === 0) {
       return res.status(404).json({ error: 'Company not found' });
@@ -94,27 +158,87 @@ export const getCompanyById = async (req, res, next) => {
 export const updateCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
   const updatedData = req.body; // Get the updated data from the request body
-  // Only allow updating the fields that exist in the DB
-  const allowedFields = [
-    'code', 'name', 'address', 'email', 'phone', 'password',
-    'pf_code', 'esi_code', 'labour_license', 'domain_name',
-    'contact_person', 'website', 'super_admin_id', 'logo',
-    'pan_no', 'tan_no', 'company_type', 'sector',
-    'created_at', 'updated_at'
-  ];
-  const filteredData = {};
-  for (const key of allowedFields) {
-    if (updatedData[key] !== undefined) filteredData[key] = updatedData[key];
-  }
-  if (!Object.keys(filteredData).length) {
-    return res.status(400).json({ error: 'No valid data provided for update' });
-  }
+  
   try {
-    const [result] = await db.query('UPDATE companies SET ? WHERE id = ?', [filteredData, id]);
-    if (result.affectedRows === 0) {
+    // First, get the company to find the super admin ID
+    const [company] = await db.query('SELECT super_admin_id FROM companies WHERE id = ?', [id]);
+    if (company.length === 0) {
       return res.status(404).json({ error: 'Company not found' });
     }
-    const [updatedCompany] = await db.query('SELECT * FROM companies WHERE id = ?', [id]);
+    
+    const superAdminId = company[0].super_admin_id;
+    
+    // Separate fields for different tables
+    const companyFields = [
+      'code', 'name', 'address', 'pf_code', 'esi_code', 'labour_license', 
+      'domain_name', 'website', 'logo', 'pan_no', 'tan_no', 'company_type', 'sector'
+    ];
+    const userFields = ['password']; // Only password goes to users table
+    const employeeFields = ['email', 'phone', 'contact_person', 'date_of_birth', 'gender', 'blood_group'];
+    
+    const companyData = {};
+    const userData = {};
+    const employeeData = {};
+    
+    // Filter fields for company table
+    for (const key of companyFields) {
+      if (updatedData[key] !== undefined) companyData[key] = updatedData[key];
+    }
+    
+    // Filter fields for user table
+    for (const key of userFields) {
+      if (updatedData[key] !== undefined) {
+        userData[key] = updatedData[key];
+      }
+    }
+    
+    // Filter fields for employee table (map contact_person to first_name)
+    for (const key of employeeFields) {
+      if (updatedData[key] !== undefined) {
+        if (key === 'contact_person') {
+          employeeData.first_name = updatedData[key];
+        } else {
+          employeeData[key] = updatedData[key];
+        }
+      }
+    }
+    
+    // Update company table if there are company fields to update
+    if (Object.keys(companyData).length > 0) {
+      companyData.updated_at = new Date();
+      const [result] = await db.query('UPDATE companies SET ? WHERE id = ?', [companyData, id]);
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+    }
+    
+    // Update user table if there are user fields to update
+    if (Object.keys(userData).length > 0 && superAdminId) {
+      userData.updated_at = new Date();
+      await db.query('UPDATE users SET ? WHERE id = ?', [userData, superAdminId]);
+    }
+    
+    // Update employee table if there are employee fields to update
+    if (Object.keys(employeeData).length > 0 && superAdminId) {
+      employeeData.updated_at = new Date();
+      await db.query('UPDATE employees SET ? WHERE user_id = ? AND company_id = ?', [employeeData, superAdminId, id]);
+    }
+    
+    // Fetch updated company data with user and employee info for response
+    const [updatedCompany] = await db.query(`
+      SELECT 
+        c.*,
+        u.password,
+        e.email,
+        e.phone,
+        e.first_name as contact_person,
+        e.id as employee_id
+      FROM companies c
+      LEFT JOIN users u ON c.super_admin_id = u.id
+      LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+      WHERE c.id = ?
+    `, [id]);
+    
     res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
   } catch (err) {
     console.error("Error updating company:", err);

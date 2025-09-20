@@ -343,7 +343,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                 { name: 'domain_name', label: 'Domain Name', type: 'text' },
                                 { name: 'contact_person', label: 'Contact Person', type: 'text' },
                                 { name: 'website', label: 'Website', type: 'url' },
-                                { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
+                                // { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
                             ].map((field) => (
                                 <div key={field.name}>
                                     <label className="block text-sm font-medium text-gray-700 mb-1.5">

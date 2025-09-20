@@ -3,25 +3,28 @@ export interface Company {
   code: string;
   name: string;
   address: string;
-  email: string;
-  phone: string;
+  // Note: These fields are now stored in different tables
+  email: string;              // From employees.email
+  phone: string;              // From employees.phone  
+  contact_person: string;     // From employees.first_name
+  password: string;           // From users.password (admin)
+  // Company-specific fields
   pf_code: string;
   esi_code: string;
   labour_license: string;
   domain_name: string;
-  contact_person: string;
   website: string;
   super_admin_id: string;
-  password: string;
   logo: string;
   edition: string;
   created_at: string;
-  // Add missing fields for CreateCompany compatibility
+  // Additional fields
   invite_admin: number;
   pan_no: string;
   tan_no: string;
   company_type: string;
   sector: string;
+  employee_id?: string;       // Optional employee ID
 }
 
 export interface User {
