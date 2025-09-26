@@ -5,21 +5,27 @@ export const createCompany = async (req, res, next) => {
     code, name, address, email, phone, password,
     pf_code, esi_code, labour_license, domain_name,
     contact_person, website, super_admin_id, logo, createdAt, updatedAt,
-    pan_no, tan_no, company_type, sector, // new fields
+    pan_no, tan_no, company_type, sector, service_commences_on, // new fields
     // For user:
     last_name, date_of_birth, gender, blood_group
   } = req.body;
+
+  // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
+  let formattedServiceCommencesOn = service_commences_on;
+  if (service_commences_on && service_commences_on.match(/^\d{4}-\d{2}$/)) {
+    formattedServiceCommencesOn = service_commences_on + '-01';
+  }
 
   try {
     // 1. First, create the company
     const [companyResult] = await db.query(
       `INSERT INTO companies 
       (code, name, address, pf_code, esi_code, labour_license, domain_name, 
-       website, logo, pan_no, tan_no, company_type, sector, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+       website, logo, pan_no, tan_no, company_type, sector, service_commences_on, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         code, name, address, pf_code, esi_code, labour_license, domain_name,
-        website, logo, pan_no, tan_no, company_type, sector
+        website, logo, pan_no, tan_no, company_type, sector, formattedServiceCommencesOn
       ]
     );
 
@@ -139,7 +145,18 @@ export const getCompanies = async (req, res, next) => {
         LEFT JOIN users u ON c.super_admin_id = u.id
         LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
       `);
-      res.status(200).json(companies);
+      
+      // Format service_commences_on to avoid timezone issues
+      const formattedCompanies = companies.map(company => {
+        if (company.service_commences_on) {
+          const date = new Date(company.service_commences_on);
+          company.service_commences_on = date.getFullYear() + '-' + 
+            String(date.getMonth() + 1).padStart(2, '0');
+        }
+        return company;
+      });
+      
+      res.status(200).json(formattedCompanies);
     } catch (employeeErr) {
       // If employees table doesn't exist, fall back to users table only
       console.log("Employees table not found, using users table");
@@ -153,7 +170,18 @@ export const getCompanies = async (req, res, next) => {
         FROM companies c
         LEFT JOIN users u ON c.super_admin_id = u.id
       `);
-      res.status(200).json(companies);
+      
+      // Format service_commences_on to avoid timezone issues
+      const formattedCompanies = companies.map(company => {
+        if (company.service_commences_on) {
+          const date = new Date(company.service_commences_on);
+          company.service_commences_on = date.getFullYear() + '-' + 
+            String(date.getMonth() + 1).padStart(2, '0');
+        }
+        return company;
+      });
+      
+      res.status(200).json(formattedCompanies);
     }
   } catch (err) {
     next(err);
@@ -184,7 +212,16 @@ export const getCompanyById = async (req, res, next) => {
         return res.status(404).json({ error: 'Company not found' });
       }
 
-      res.status(200).json(company[0]);
+      // Format service_commences_on to avoid timezone issues
+      const companyData = { ...company[0] };
+      if (companyData.service_commences_on) {
+        // Convert to YYYY-MM format for month input compatibility
+        const date = new Date(companyData.service_commences_on);
+        companyData.service_commences_on = date.getFullYear() + '-' + 
+          String(date.getMonth() + 1).padStart(2, '0');
+      }
+
+      res.status(200).json(companyData);
     } catch (employeeErr) {
       // If employees table doesn't exist, fall back to users table only
       console.log("Employees table not found, using users table");
@@ -204,7 +241,16 @@ export const getCompanyById = async (req, res, next) => {
         return res.status(404).json({ error: 'Company not found' });
       }
 
-      res.status(200).json(company[0]);
+      // Format service_commences_on to avoid timezone issues
+      const companyData = { ...company[0] };
+      if (companyData.service_commences_on) {
+        // Convert to YYYY-MM format for month input compatibility
+        const date = new Date(companyData.service_commences_on);
+        companyData.service_commences_on = date.getFullYear() + '-' + 
+          String(date.getMonth() + 1).padStart(2, '0');
+      }
+
+      res.status(200).json(companyData);
     }
   } catch (err) {
     console.error("Error fetching company by ID:", err);
@@ -216,6 +262,11 @@ export const getCompanyById = async (req, res, next) => {
 export const updateCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
   const updatedData = req.body; // Get the updated data from the request body
+
+  // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
+  if (updatedData.service_commences_on && updatedData.service_commences_on.match(/^\d{4}-\d{2}$/)) {
+    updatedData.service_commences_on = updatedData.service_commences_on + '-01';
+  }
   
   try {
     // First, get the company to find the super admin ID
@@ -229,7 +280,7 @@ export const updateCompany = async (req, res, next) => {
     // Separate fields for different tables (using current structure)
     const companyFields = [
       'code', 'name', 'address', 'pf_code', 'esi_code', 'labour_license', 
-      'domain_name', 'website', 'logo', 'pan_no', 'tan_no', 'company_type', 'sector'
+      'domain_name', 'website', 'logo', 'pan_no', 'tan_no', 'company_type', 'sector', 'service_commences_on'
     ];
     const userFields = ['email', 'phone', 'password', 'contact_person', 'date_of_birth', 'gender', 'blood_group'];
     
@@ -307,7 +358,15 @@ export const updateCompany = async (req, res, next) => {
         WHERE c.id = ?
       `, [id]);
       
-      res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
+      // Format service_commences_on to avoid timezone issues
+      const companyData = { ...updatedCompany[0] };
+      if (companyData.service_commences_on) {
+        const date = new Date(companyData.service_commences_on);
+        companyData.service_commences_on = date.getFullYear() + '-' + 
+          String(date.getMonth() + 1).padStart(2, '0');
+      }
+      
+      res.status(200).json({ message: 'Company updated successfully', company: companyData });
     } catch (employeeErr) {
       // Fall back to users table only
       console.log("Employees table not found, using users table for response");
@@ -323,7 +382,15 @@ export const updateCompany = async (req, res, next) => {
         WHERE c.id = ?
       `, [id]);
       
-      res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
+      // Format service_commences_on to avoid timezone issues
+      const companyData = { ...updatedCompany[0] };
+      if (companyData.service_commences_on) {
+        const date = new Date(companyData.service_commences_on);
+        companyData.service_commences_on = date.getFullYear() + '-' + 
+          String(date.getMonth() + 1).padStart(2, '0');
+      }
+      
+      res.status(200).json({ message: 'Company updated successfully', company: companyData });
     }
   } catch (err) {
     console.error("Error updating company:", err);

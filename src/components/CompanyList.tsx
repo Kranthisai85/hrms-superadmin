@@ -177,6 +177,8 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
         try {
             // Fetch latest company details from backend
             const response = await axios.get(`${API_BASE_URL}/companies/${company.id}`);
+            console.log('API Response:', response.data);
+            console.log('service_commences_on from API:', response.data.service_commences_on);
             setCompanyToUpdate(response.data); // Set the latest company data
             setShowCreateModal(true); // Open the modal
         } catch (err) {
@@ -398,7 +400,7 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                                 className="w-full h-full object-contain rounded-lg p-1"
                                                 style={{
                                                     filter: 'contrast(1.1) brightness(1.05)',
-                                                    imageRendering: 'high-quality'
+                                                    imageRendering: 'auto'
                                                 }}
                                                 onError={(e) => {
                                                     const target = e.target as HTMLImageElement;
@@ -447,13 +449,13 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                         </div>
                                     </div>
                                     <div className="flex gap-2 items-center">
-                                        <button
+                                        {/* <button
                                             onClick={() => handlePasswordManager(company)}
                                             className="p-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-colors"
                                             title="Password Manager"
                                         >
                                             <Key className="w-4 h-4" />
-                                        </button>
+                                        </button> */}
                                         <a
                                             href={`https://${company.domain_name}?companyId=${encodeURIComponent(company.id)}&superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
                                             target="_blank"

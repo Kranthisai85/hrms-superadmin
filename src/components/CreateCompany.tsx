@@ -82,6 +82,8 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
 
     useEffect(() => {
         if (company) {
+            console.log('Company data received:', company);
+            console.log('service_commences_on value:', company.service_commences_on);
             setFormData({
                 code: company.code || '',
                 name: company.name || '',
@@ -501,6 +503,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                     name="service_commences_on"
                                     value={formData.service_commences_on}
                                     onChange={handleInputChange}
+                                    // min={new Date().toISOString().slice(0, 7)}
                                     className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
                                     required
                                 />
@@ -539,13 +542,15 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                             Cancel
                         </button>
                         <div className="flex gap-3">
-                        <button
-                            type="button"
-                            onClick={handleReset}
-                            className="px-6 py-2.5 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:ring-4 focus:ring-gray-200 transition-all"
-                        >
-                            Reset Form
-                        </button>
+                        {!company?.id && (
+                            <button
+                                type="button"
+                                onClick={handleReset}
+                                className="px-6 py-2.5 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:ring-4 focus:ring-gray-200 transition-all"
+                            >
+                                Reset Form
+                            </button>
+                        )}
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
@@ -553,14 +558,14 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                             >
                                 {company?.id ? (isSubmitting ? 'Updating...' : 'Update Company') : (isSubmitting ? 'Saving...' : 'Create Company')}
                             </button>
-                        {company?.id && (
+                        {/* {company?.id && (
                             <button
                                 type="button"
                                 className="px-6 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 focus:ring-4 focus:ring-red-200 transition-all"
                             >
                                 Delete Company
                             </button>
-                        )}
+                        )} */}
                         </div>
                     </div>
                 </form>
