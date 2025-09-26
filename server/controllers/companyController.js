@@ -25,13 +25,14 @@ export const createCompany = async (req, res, next) => {
 
     const companyId = companyResult.insertId;
 
-    // 2. Create admin user (only password, role, and basic info)
+    // 2. Create admin user (password and auth info)
     const [userResult] = await db.query(
-      `INSERT INTO users (name, last_name, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
+      `INSERT INTO users (name, last_name, email, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
       [
         contact_person || name,
         last_name || '',
+        email, // Email in users table as fallback
         password,
         'admin',
         phone,
@@ -44,29 +45,34 @@ export const createCompany = async (req, res, next) => {
     );
 
     const superAdminId = userResult.insertId;
+    let employeeId = null;
 
-    // 3. Create employee record (with email and other employee details)
-    const [employeeResult] = await db.query(
-      `INSERT INTO employees (
-        company_id, user_id, employee_code, first_name, last_name, email, phone, 
-        date_of_birth, gender, blood_group, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        companyId,
-        superAdminId,
-        code, // Using company code as employee code for admin
-        contact_person || name,
-        last_name || '',
-        email, // Email goes to employee table
-        phone,
-        date_of_birth || null,
-        gender || null,
-        blood_group || null,
-        'Active'
-      ]
-    );
-
-    const employeeId = employeeResult.insertId;
+    // 3. Try to create employee record if employees table exists
+    try {
+      const [employeeResult] = await db.query(
+        `INSERT INTO employees (
+          company_id, user_id, employee_code, first_name, last_name, email, phone, 
+          date_of_birth, gender, blood_group, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          companyId,
+          superAdminId,
+          code, // Using company code as employee code for admin
+          contact_person || name,
+          last_name || '',
+          email, // Email goes to employee table
+          phone,
+          date_of_birth || null,
+          gender || null,
+          blood_group || null,
+          'Active'
+        ]
+      );
+      employeeId = employeeResult.insertId;
+      console.log("Employee record created successfully");
+    } catch (employeeErr) {
+      console.log("Employees table not found, skipping employee creation");
+    }
 
     // 4. Update the company with the super_admin_id
     await db.query(
@@ -74,24 +80,38 @@ export const createCompany = async (req, res, next) => {
       [superAdminId, companyId]
     );
 
-    // 5. Fetch the complete data for API response
+    // 5. Fetch the complete data for API response (try with employee data first)
     const [company] = await db.query('SELECT * FROM companies WHERE id = ?', [companyId]);
     const [user] = await db.query('SELECT * FROM users WHERE id = ?', [superAdminId]);
-    const [employee] = await db.query('SELECT * FROM employees WHERE id = ?', [employeeId]);
     
-    // Merge company data with user and employee data for API compatibility
-    const responseCompany = {
-      ...company[0],
-      email: employee[0].email,       // From employee table
-      phone: employee[0].phone,       // From employee table  
-      password: user[0].password,     // From user table
-      contact_person: employee[0].first_name, // From employee table
-      super_admin_id: superAdminId,   // Set the super admin ID
-      employee_id: employeeId         // Include employee ID
-    };
+    let responseCompany;
+    
+    if (employeeId) {
+      // If employee was created, get data from employee table
+      const [employee] = await db.query('SELECT * FROM employees WHERE id = ?', [employeeId]);
+      responseCompany = {
+        ...company[0],
+        email: employee[0].email,       // From employee table
+        phone: employee[0].phone,       // From employee table  
+        password: user[0].password,     // From user table
+        contact_person: employee[0].first_name, // From employee table
+        super_admin_id: superAdminId,   // Set the super admin ID
+        employee_id: employeeId         // Include employee ID
+      };
+    } else {
+      // Fall back to user data
+      responseCompany = {
+        ...company[0],
+        email: user[0].email,           // From user table
+        phone: user[0].phone,           // From user table  
+        password: user[0].password,     // From user table
+        contact_person: user[0].name,   // From user table
+        super_admin_id: superAdminId    // Set the super admin ID
+      };
+    }
 
     res.status(201).json({ 
-      message: 'Company, admin user, and employee created successfully', 
+      message: employeeId ? 'Company, admin user, and employee created successfully' : 'Company and admin user created successfully', 
       company: responseCompany,
       user_id: superAdminId,
       employee_id: employeeId
@@ -105,20 +125,36 @@ export const createCompany = async (req, res, next) => {
 export const getCompanies = async (req, res, next) => {
   try {
     console.log("companies");
-    // Join companies with users and employees to get complete data
-    const [companies] = await db.query(`
-      SELECT 
-        c.*,
-        u.password,
-        e.email,
-        e.phone,
-        e.first_name as contact_person,
-        e.id as employee_id
-      FROM companies c
-      LEFT JOIN users u ON c.super_admin_id = u.id
-      LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
-    `);
-    res.status(200).json(companies);
+    // Try to join with employees table, fall back to users if it doesn't exist
+    try {
+      const [companies] = await db.query(`
+        SELECT 
+          c.*,
+          u.password,
+          COALESCE(e.email, u.email) as email,
+          COALESCE(e.phone, u.phone) as phone,
+          COALESCE(e.first_name, u.name) as contact_person,
+          e.id as employee_id
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+      `);
+      res.status(200).json(companies);
+    } catch (employeeErr) {
+      // If employees table doesn't exist, fall back to users table only
+      console.log("Employees table not found, using users table");
+      const [companies] = await db.query(`
+        SELECT 
+          c.*,
+          u.email,
+          u.phone,
+          u.password,
+          u.name as contact_person
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+      `);
+      res.status(200).json(companies);
+    }
   } catch (err) {
     next(err);
   }
@@ -128,26 +164,48 @@ export const getCompanyById = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
 
   try {
-    // Join with users and employees to get complete data
-    const [company] = await db.query(`
-      SELECT 
-        c.*,
-        u.password,
-        e.email,
-        e.phone,
-        e.first_name as contact_person,
-        e.id as employee_id
-      FROM companies c
-      LEFT JOIN users u ON c.super_admin_id = u.id
-      LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
-      WHERE c.id = ?
-    `, [id]);
+    // Try to join with employees table, fall back to users if it doesn't exist
+    try {
+      const [company] = await db.query(`
+        SELECT 
+          c.*,
+          u.password,
+          COALESCE(e.email, u.email) as email,
+          COALESCE(e.phone, u.phone) as phone,
+          COALESCE(e.first_name, u.name) as contact_person,
+          e.id as employee_id
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+        WHERE c.id = ?
+      `, [id]);
 
-    if (company.length === 0) {
-      return res.status(404).json({ error: 'Company not found' });
+      if (company.length === 0) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      res.status(200).json(company[0]);
+    } catch (employeeErr) {
+      // If employees table doesn't exist, fall back to users table only
+      console.log("Employees table not found, using users table");
+      const [company] = await db.query(`
+        SELECT 
+          c.*,
+          u.email,
+          u.phone,
+          u.password,
+          u.name as contact_person
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        WHERE c.id = ?
+      `, [id]);
+
+      if (company.length === 0) {
+        return res.status(404).json({ error: 'Company not found' });
+      }
+
+      res.status(200).json(company[0]);
     }
-
-    res.status(200).json(company[0]);
   } catch (err) {
     console.error("Error fetching company by ID:", err);
     next(err);
@@ -168,37 +226,28 @@ export const updateCompany = async (req, res, next) => {
     
     const superAdminId = company[0].super_admin_id;
     
-    // Separate fields for different tables
+    // Separate fields for different tables (using current structure)
     const companyFields = [
       'code', 'name', 'address', 'pf_code', 'esi_code', 'labour_license', 
       'domain_name', 'website', 'logo', 'pan_no', 'tan_no', 'company_type', 'sector'
     ];
-    const userFields = ['password']; // Only password goes to users table
-    const employeeFields = ['email', 'phone', 'contact_person', 'date_of_birth', 'gender', 'blood_group'];
+    const userFields = ['email', 'phone', 'password', 'contact_person', 'date_of_birth', 'gender', 'blood_group'];
     
     const companyData = {};
     const userData = {};
-    const employeeData = {};
     
     // Filter fields for company table
     for (const key of companyFields) {
       if (updatedData[key] !== undefined) companyData[key] = updatedData[key];
     }
     
-    // Filter fields for user table
+    // Filter fields for user table (map contact_person to name)
     for (const key of userFields) {
       if (updatedData[key] !== undefined) {
-        userData[key] = updatedData[key];
-      }
-    }
-    
-    // Filter fields for employee table (map contact_person to first_name)
-    for (const key of employeeFields) {
-      if (updatedData[key] !== undefined) {
         if (key === 'contact_person') {
-          employeeData.first_name = updatedData[key];
+          userData.name = updatedData[key];
         } else {
-          employeeData[key] = updatedData[key];
+          userData[key] = updatedData[key];
         }
       }
     }
@@ -218,28 +267,64 @@ export const updateCompany = async (req, res, next) => {
       await db.query('UPDATE users SET ? WHERE id = ?', [userData, superAdminId]);
     }
     
-    // Update employee table if there are employee fields to update
-    if (Object.keys(employeeData).length > 0 && superAdminId) {
-      employeeData.updated_at = new Date();
-      await db.query('UPDATE employees SET ? WHERE user_id = ? AND company_id = ?', [employeeData, superAdminId, id]);
+    // Try to update employee table if it exists and there are employee-specific fields
+    const employeeFields = ['email', 'phone', 'contact_person', 'date_of_birth', 'gender', 'blood_group'];
+    const employeeData = {};
+    
+    for (const key of employeeFields) {
+      if (updatedData[key] !== undefined) {
+        if (key === 'contact_person') {
+          employeeData.first_name = updatedData[key];
+        } else {
+          employeeData[key] = updatedData[key];
+        }
+      }
     }
     
-    // Fetch updated company data with user and employee info for response
-    const [updatedCompany] = await db.query(`
-      SELECT 
-        c.*,
-        u.password,
-        e.email,
-        e.phone,
-        e.first_name as contact_person,
-        e.id as employee_id
-      FROM companies c
-      LEFT JOIN users u ON c.super_admin_id = u.id
-      LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
-      WHERE c.id = ?
-    `, [id]);
+    if (Object.keys(employeeData).length > 0 && superAdminId) {
+      try {
+        employeeData.updated_at = new Date();
+        await db.query('UPDATE employees SET ? WHERE user_id = ? AND company_id = ?', [employeeData, superAdminId, id]);
+        console.log("Employee data updated successfully");
+      } catch (employeeErr) {
+        console.log("Employees table not found, employee data not updated");
+      }
+    }
     
-    res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
+    // Fetch updated company data (try with employee data first)
+    try {
+      const [updatedCompany] = await db.query(`
+        SELECT 
+          c.*,
+          u.password,
+          COALESCE(e.email, u.email) as email,
+          COALESCE(e.phone, u.phone) as phone,
+          COALESCE(e.first_name, u.name) as contact_person,
+          e.id as employee_id
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+        WHERE c.id = ?
+      `, [id]);
+      
+      res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
+    } catch (employeeErr) {
+      // Fall back to users table only
+      console.log("Employees table not found, using users table for response");
+      const [updatedCompany] = await db.query(`
+        SELECT 
+          c.*,
+          u.email,
+          u.phone,
+          u.password,
+          u.name as contact_person
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        WHERE c.id = ?
+      `, [id]);
+      
+      res.status(200).json({ message: 'Company updated successfully', company: updatedCompany[0] });
+    }
   } catch (err) {
     console.error("Error updating company:", err);
     next(err);
