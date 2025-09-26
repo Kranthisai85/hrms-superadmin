@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Shield, Building2, Home } from 'lucide-react';
 import LoginForm from './components/LoginForm';
 import Navbar from './components/Navbar';
+import Dashboard from './components/Dashboard';
 import CompanyList from './components/CompanyList';
 import CreateCompany from './components/CreateCompany';
 // import UsersList from './components/users/UsersList';
@@ -29,21 +31,14 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <Navbar 
         onNavigate={setCurrentPage}
         onLogout={handleLogout}
       />
       
-      <div className="ml-64 p-8">
-        {currentPage === 'home' && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Welcome, Super Admin!</h1>
-            <p className="text-gray-600">
-              You can manage companies, users, and roles from the navigation menu on the left.
-            </p>
-          </div>
-        )}
+      <div className="pt-16">
+        {currentPage === 'home' && <Dashboard />}
         
         {currentPage === 'companies' && (
           <CompanyList

@@ -24,6 +24,8 @@ export interface Company {
   tan_no: string;
   company_type: string;
   sector: string;
+  service_commences_on: string;
+  is_active?: boolean;        // Optional active status
   employee_id?: string;       // Optional employee ID
 }
 

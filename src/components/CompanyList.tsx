@@ -1,13 +1,23 @@
 import axios from 'axios';
-import { Building2, ChevronLeft, MoreVertical } from 'lucide-react';
+import { Building2, ChevronLeft, MoreVertical, Star, Key } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import type { Company } from '../types';
 import CreateCompany from './CreateCompany';
+import PasswordManager from './PasswordManager';
 import { API_BASE_URL } from '../config';
 import { RelativeTime } from './RelativeTime';
 
 // CompanyMenu component for action popup
-function CompanyMenu({ onUpdate, onDelete, onClose }: { onUpdate: () => void; onDelete: () => void; onClose: () => void }) {
+function CompanyMenu({ onUpdate, onDelete, onDeactivate, onActivate, onToggleFavorite, onClose, isActive, isFavorite }: { 
+    onUpdate: () => void; 
+    onDelete: () => void; 
+    onDeactivate: () => void;
+    onActivate: () => void;
+    onToggleFavorite: () => void;
+    onClose: () => void;
+    isActive: boolean;
+    isFavorite: boolean;
+}) {
     const menuRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -19,16 +29,37 @@ function CompanyMenu({ onUpdate, onDelete, onClose }: { onUpdate: () => void; on
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [onClose]);
     return (
-        <div ref={menuRef} className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg z-20 animate-fade-in">
+        <div ref={menuRef} className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20">
             <button
                 onClick={onUpdate}
-                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors rounded-t-lg"
             >
                 Update Details
             </button>
             <button
+                onClick={onToggleFavorite}
+                className="block w-full text-left px-4 py-2 text-sm text-yellow-600 hover:bg-yellow-50 transition-colors"
+            >
+                {isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+            </button>
+            {isActive ? (
+                <button
+                    onClick={onDeactivate}
+                    className="block w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 transition-colors"
+                >
+                    Deactivate Company
+                </button>
+            ) : (
+                <button
+                    onClick={onActivate}
+                    className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50 transition-colors"
+                >
+                    Activate Company
+                </button>
+            )}
+            <button
                 onClick={onDelete}
-                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-100 transition-colors"
+                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors rounded-b-lg"
             >
                 Delete Company
             </button>
@@ -76,8 +107,10 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
     const [, setUpdateLoading] = useState(false); // For update modal loading
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [companyIdToDelete, setCompanyIdToDelete] = useState<string | null>(null);
-
-    const companiesPerPage = 3;
+    const [favoriteCompanies, setFavoriteCompanies] = useState<Set<string>>(new Set());
+    const [showPasswordManager, setShowPasswordManager] = useState(false);
+    const [selectedCompanyForPassword, setSelectedCompanyForPassword] = useState<Company | null>(null);
+    const companiesPerPage = 10; // 10 companies per page
     const indexOfLastCompany = currentPage * companiesPerPage;
     const indexOfFirstCompany = indexOfLastCompany - companiesPerPage;
     const currentCompanies = filteredCompanies.slice(indexOfFirstCompany, indexOfLastCompany);
@@ -106,6 +139,12 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
             }
         };
 
+        // Load favorites from localStorage
+        const savedFavorites = localStorage.getItem('favoriteCompanies');
+        if (savedFavorites) {
+            setFavoriteCompanies(new Set(JSON.parse(savedFavorites)));
+        }
+
         fetchCompanies();
     }, []);
 
@@ -117,8 +156,20 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
         const filtered = companies.filter((company) =>
             company.name.toLowerCase().includes(query)
         );
-        setFilteredCompanies(filtered);
-        setCurrentPage(1); // Reset to the first page after filtering
+        
+        // Sort filtered companies with favorites first
+        const sortedFiltered = filtered.sort((a, b) => {
+            const aIsFavorite = favoriteCompanies.has(a.id);
+            const bIsFavorite = favoriteCompanies.has(b.id);
+            
+            if (aIsFavorite && !bIsFavorite) return -1;
+            if (!aIsFavorite && bIsFavorite) return 1;
+            
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setFilteredCompanies(sortedFiltered);
+        setCurrentPage(1); // Reset to first page when searching
     };
 
     const handleUpdate = async (company: Company) => {
@@ -194,6 +245,70 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
         setCompanyIdToDelete(null);
     };
 
+    const handleDeactivate = async (companyId: string) => {
+        try {
+            await axios.patch(`${API_BASE_URL}/companies/${companyId}`, { is_active: false });
+            setCompanies(companies.map(c => c.id === companyId ? { ...c, is_active: false } : c));
+            setFilteredCompanies(filteredCompanies.map(c => c.id === companyId ? { ...c, is_active: false } : c));
+            alert('Company deactivated successfully.');
+        } catch (err) {
+            alert('Failed to deactivate company.');
+        }
+    };
+
+    const handleActivate = async (companyId: string) => {
+        try {
+            await axios.patch(`${API_BASE_URL}/companies/${companyId}`, { is_active: true });
+            setCompanies(companies.map(c => c.id === companyId ? { ...c, is_active: true } : c));
+            setFilteredCompanies(filteredCompanies.map(c => c.id === companyId ? { ...c, is_active: true } : c));
+            alert('Company activated successfully.');
+        } catch (err) {
+            alert('Failed to activate company.');
+        }
+    };
+
+    const handleToggleFavorite = (companyId: string) => {
+        const newFavorites = new Set(favoriteCompanies);
+        if (newFavorites.has(companyId)) {
+            newFavorites.delete(companyId);
+        } else {
+            newFavorites.add(companyId);
+        }
+        setFavoriteCompanies(newFavorites);
+        localStorage.setItem('favoriteCompanies', JSON.stringify(Array.from(newFavorites)));
+        
+        // Re-sort companies with favorites first
+        const sortedCompanies = companies.sort((a, b) => {
+            const aIsFavorite = newFavorites.has(a.id);
+            const bIsFavorite = newFavorites.has(b.id);
+            
+            if (aIsFavorite && !bIsFavorite) return -1;
+            if (!aIsFavorite && bIsFavorite) return 1;
+            
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setCompanies(sortedCompanies);
+        
+        // Re-sort filtered companies
+        const sortedFiltered = filteredCompanies.sort((a, b) => {
+            const aIsFavorite = newFavorites.has(a.id);
+            const bIsFavorite = newFavorites.has(b.id);
+            
+            if (aIsFavorite && !bIsFavorite) return -1;
+            if (!aIsFavorite && bIsFavorite) return 1;
+            
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        
+        setFilteredCompanies(sortedFiltered);
+    };
+
+    const handlePasswordManager = (company: Company) => {
+        setSelectedCompanyForPassword(company);
+        setShowPasswordManager(true);
+    };
+
     // Callback to update company in state after update
     const handleCompanyUpdated = (updatedCompany: Company) => {
         setCompanies((prev) => prev.map((c) => c.id === updatedCompany.id ? updatedCompany : c));
@@ -205,93 +320,154 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
     const navigate = onNavigateBack; // Use the provided navigation function
 
     return (
-        <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
+        <div className="w-full px-4 py-4">
+            <div className="flex justify-between items-center mb-4">
                 <div>
                     <button
-                        onClick={navigate} // Call the navigation function
-                        className="text-blue-500 mb-4 flex items-center gap-1"
+                        onClick={navigate}
+                        className="text-blue-600 mb-3 flex items-center gap-2 text-sm font-medium hover:text-blue-700 transition-colors"
                     >
-                        <ChevronLeft className="w-4 h-4" /> Back
+                        <ChevronLeft className="w-4 h-4" /> Back to Dashboard
                     </button>
-                    <h1 className="text-2xl font-semibold">Hi, PaceHrm SuperAdmin!</h1>
-                    <p className="text-gray-600">
-                        You are a part of the following organizations. Go to the organization which you wish to access now.
-                    </p>
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <Building2 className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
+                            <p className="text-gray-600 text-sm">Manage and monitor all organizations in your system</p>
+                        </div>
+                    </div>
                 </div>
                 <button
                     onClick={() => setShowCreateModal(true)}
-                    className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
                 >
-                    + New Organization
+                    <Building2 className="w-4 h-4" />
+                    New Organization
                 </button>
             </div>
 
             {/* Search Bar */}
             <div className="mb-4">
-                <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={handleSearch}
-                    placeholder="Search by company name..."
-                    className="w-1/3 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="relative w-1/4">
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={handleSearch}
+                        placeholder="Search organizations..."
+                        className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white shadow-sm"
+                    />
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                </div>
             </div>
 
             {loading ? (
-                <div className="text-center">Loading companies...</div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading organizations...</p>
+                    </div>
+                </div>
             ) : error ? (
-                <div className="text-center text-red-600">{error}</div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+                    <div className="text-center">
+                        <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <p className="text-red-600 font-medium">{error}</p>
+                    </div>
+                </div>
             ) : (
-                <>
-                    <div className="space-y-4 overflow-y-auto max-h-[calc(100vh-200px)]">
-                        {currentCompanies.map((company) => (
-                            <div key={company.id} className="bg-white rounded-lg shadow-sm border border-gray-200">
-                                <div className="p-6">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex gap-4">
-                                            <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
-                                                {company.logo && typeof company.logo === 'string' ? (
-                                                    <img
-                                                        src={company.logo}
-                                                        alt={`${company.name} Logo`}
-                                                        className="w-full h-full object-cover rounded-lg"
-                                                    />
-                                                ) : (
-                                                    <Building2 className="w-8 h-8 text-gray-400" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h2 className="text-lg font-semibold">{company.name}</h2>
-                                                    <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">
-                                                        {company.edition}
-                                                    </span>
-                                                </div>
-                                                <p className="text-sm text-gray-500">
-                                                    Organization created <RelativeTime date={company.created_at} />
-                                                </p>
-                                                <p className="text-sm text-gray-500">Organization ID: {company.id}</p>
-                                                <p className="text-sm text-gray-500">Address: {company.address}</p>
-                                                <p className="text-sm mt-2">
-                                                    You are an <span className="font-medium">Superadmin</span> in this organization
-                                                </p>
-                                            </div>
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div className="p-4">
+                        <div className="space-y-3">
+                            {currentCompanies.map((company) => (
+                                <div key={company.id} className="flex items-center gap-4 p-3 border border-gray-200 rounded-lg hover:shadow-md transition-all duration-200 hover:border-blue-300">
+                                    <div className="w-16 h-16 bg-white border-2 border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
+                                        {company.logo && typeof company.logo === 'string' && company.logo.trim() !== '' ? (
+                                            <img
+                                                src={company.logo}
+                                                alt={`${company.name} Logo`}
+                                                className="w-full h-full object-contain rounded-lg p-1"
+                                                style={{
+                                                    filter: 'contrast(1.1) brightness(1.05)',
+                                                    imageRendering: 'high-quality'
+                                                }}
+                                                onError={(e) => {
+                                                    const target = e.target as HTMLImageElement;
+                                                    target.style.display = 'none';
+                                                    target.nextElementSibling?.classList.remove('hidden');
+                                                }}
+                                            />
+                                        ) : null}
+                                        <Building2 className="w-8 h-8 text-gray-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <h3 className="text-lg font-semibold text-gray-900 truncate">{company.name}</h3>
+                                            {favoriteCompanies.has(company.id) && (
+                                                <Star className="w-4 h-4 text-yellow-500 fill-current" />
+                                            )}
+                                            <span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full font-medium">
+                                                {company.edition}
+                                            </span>
+                                            <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full font-medium">
+                                                Superadmin
+                                            </span>
+                                            {(company as any).is_active === false && (
+                                                <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded-full font-medium">
+                                                    Inactive
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="flex gap-2 relative">
-                                            <a
-                                                href={`https://${company.domain_name}?companyId=${encodeURIComponent(company.id)}&superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="px-4 py-2 text-blue-500 border border-blue-500 rounded hover:bg-blue-50"
-                                            >
-                                                Go to Organization
-                                            </a>
+                                        <div className="flex items-center gap-6 text-sm text-gray-500">
+                                            <span className="truncate">
+                                                <span className="font-medium">ID:</span> {company.id}
+                                            </span>
+                                            <span className="whitespace-nowrap">
+                                                <span className="font-medium">Created:</span> <RelativeTime date={company.created_at} />
+                                            </span>
+                                            {company.company_type && (
+                                                <span className="whitespace-nowrap">
+                                                    <span className="font-medium">Type:</span> {company.company_type}
+                                                </span>
+                                            )}
+                                            {company.sector && (
+                                                <span className="whitespace-nowrap">
+                                                    <span className="font-medium">Sector:</span> {company.sector}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 items-center">
+                                        <button
+                                            onClick={() => handlePasswordManager(company)}
+                                            className="p-2 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200 transition-colors"
+                                            title="Password Manager"
+                                        >
+                                            <Key className="w-4 h-4" />
+                                        </button>
+                                        <a
+                                            href={`https://${company.domain_name}?companyId=${encodeURIComponent(company.id)}&superAdminID=${encodeURIComponent(company.email)}&password=${encodeURIComponent(company.password)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm"
+                                        >
+                                            Access Organization
+                                        </a>
+                                        <div className="relative">
                                             <button
-                                                onClick={() => setSelectedCompany(company.id)} // Toggle menu visibility
-                                                className="p-2 text-gray-400 hover:text-gray-600"
+                                                onClick={() => setSelectedCompany(company.id)}
+                                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                                             >
-                                                <MoreVertical className="w-5 h-5" />
+                                                <MoreVertical className="w-4 h-4" />
                                             </button>
                                             {selectedCompany === company.id && (
                                                 <CompanyMenu
@@ -303,33 +479,70 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                                                         setSelectedCompany(null);
                                                         handleDelete(company.id);
                                                     }}
+                                                    onDeactivate={() => {
+                                                        setSelectedCompany(null);
+                                                        handleDeactivate(company.id);
+                                                    }}
+                                                    onActivate={() => {
+                                                        setSelectedCompany(null);
+                                                        handleActivate(company.id);
+                                                    }}
+                                                    onToggleFavorite={() => {
+                                                        setSelectedCompany(null);
+                                                        handleToggleFavorite(company.id);
+                                                    }}
                                                     onClose={() => setSelectedCompany(null)}
+                                                    isActive={(company as any).is_active !== false}
+                                                    isFavorite={favoriteCompanies.has(company.id)}
                                                 />
                                             )}
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-
-                    {totalPages > 1 && (
-                        <div className="mt-4 flex justify-center gap-2">
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                </div>
+            )}
+                    
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="mt-4 flex justify-center">
+                    <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+                        <button
+                            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                            disabled={currentPage === 1}
+                            className="px-3 py-2 rounded-md bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium border border-gray-300"
+                        >
+                            Previous
+                        </button>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            const startPage = Math.max(1, currentPage - 2);
+                            const page = startPage + i;
+                            if (page > totalPages) return null;
+                            return (
                                 <button
                                     key={page}
                                     onClick={() => setCurrentPage(page)}
-                                    className={`px-3 py-1 rounded ${currentPage === page
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-white text-gray-600 hover:bg-gray-100'
-                                        }`}
+                                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                                        currentPage === page
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-300'
+                                    }`}
                                 >
                                     {page}
                                 </button>
-                            ))}
-                        </div>
-                    )}
-                </>
+                            );
+                        })}
+                        <button
+                            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-2 rounded-md bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium border border-gray-300"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
             )}
 
             {showCreateModal && (
@@ -340,7 +553,11 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                     }}
                     company={
                         companyToUpdate
-                            ? { ...companyToUpdate, invite_admin: Boolean(companyToUpdate.invite_admin) }
+                            ? { 
+                                ...companyToUpdate, 
+                                invite_admin: Boolean(companyToUpdate.invite_admin),
+                                service_commences_on: (companyToUpdate as any).service_commences_on || ''
+                              }
                             : null
                     }
                     onCompanyUpdated={handleCompanyUpdated}
@@ -351,6 +568,18 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
                 onConfirm={confirmDelete}
                 onCancel={cancelDelete}
             />
+            
+            {showPasswordManager && selectedCompanyForPassword && (
+                <PasswordManager
+                    isOpen={showPasswordManager}
+                    onClose={() => {
+                        setShowPasswordManager(false);
+                        setSelectedCompanyForPassword(null);
+                    }}
+                    companyId={selectedCompanyForPassword.id}
+                    companyName={selectedCompanyForPassword.name}
+                />
+            )}
         </div>
     );
 }

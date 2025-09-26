@@ -23,6 +23,7 @@ interface CompanyFormData {
     tan_no: string; // Added
     company_type: string; // Added
     sector: string; // Added
+    service_commences_on: string; // Added
 }
 
 interface CreateCompanyProps {
@@ -48,6 +49,7 @@ interface CreateCompanyProps {
         tan_no: string; // Added
         company_type: string; // Added
         sector: string; // Added
+        service_commences_on: string; // Added
     } | null; // Optional company for updating
     onCompanyUpdated?: (updatedCompany: any) => void; // Add this line
 }
@@ -73,6 +75,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
         tan_no: '', // Added
         company_type: '', // Added
         sector: '', // Added
+        service_commences_on: '', // Added
     });
     // Add logoPreview state
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -99,6 +102,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                 tan_no: company.tan_no || '',
                 company_type: company.company_type || '',
                 sector: company.sector || '',
+                service_commences_on: company.service_commences_on || '',
             });
             // Set logo preview to existing logo if present
             setLogoPreview(company.logo ? company.logo : null);
@@ -289,6 +293,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
             tan_no: '', // Added
             company_type: '', // Added
             sector: '', // Added
+            service_commences_on: '', // Added
         });
         setLogoPreview(null);
     };
@@ -297,7 +302,9 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
         <div className="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl max-h-[95vh] overflow-y-auto">
                 <div className="p-2 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
-                    <h1 className="pl-6 text-2xl font-semibold text-gray-800">Create Company</h1>
+                    <h1 className="pl-6 text-2xl font-semibold text-gray-800">
+                        {company ? `Editing - ${company.name}` : 'Create Company'}
+                    </h1>
                     <button
                         onClick={onClose}
                         className="p-2 rounded-full hover:bg-gray-100 transition-colors"
@@ -319,19 +326,19 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                 { name: 'pf_code', label: 'PF Code', type: 'text' },
                                 { name: 'esi_code', label: 'ESI Code', type: 'text' },
                             ].map((field) => (
-                                <div key={field.name}>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        {field.label}{field.required && <span className="text-red-500">*</span>}:
-                                    </label>
+                                <div key={field.name} className="relative">
                                     <input
                                         type={field.type}
                                         name={field.name}
                                         value={formData[field.name as keyof CompanyFormData] as string}
                                         onChange={handleInputChange}
-                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                        placeholder={field.label}
+                                        className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                                        placeholder=" "
                                         required={field.required}
                                     />
+                                    <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                        {field.label}{field.required && <span className="text-red-500">*</span>}
+                                    </label>
                                 </div>
                             ))}
                         </div>
@@ -345,47 +352,45 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                 { name: 'website', label: 'Website', type: 'url' },
                                 // { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
                             ].map((field) => (
-                                <div key={field.name}>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                        {field.label}:
-                                    </label>
+                                <div key={field.name} className="relative">
                                     <input
                                         type={field.type}
                                         name={field.name}
                                         value={formData[field.name as keyof CompanyFormData] as string}
                                         onChange={handleInputChange}
-                                        className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                        placeholder={field.label}
+                                        className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                                        placeholder=" "
                                     />
+                                    <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                        {field.label}
+                                    </label>
                                 </div>
                             ))}
                             
                             {/* Password field with eye toggle */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Password:
+                            <div className="relative">
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleInputChange}
+                                    className="w-full px-4 py-3 pr-12 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                                    placeholder=" "
+                                />
+                                <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                    Password
                                 </label>
-                                <div className="relative">
-                                    <input
-                                        type={showPassword ? 'text' : 'password'}
-                                        name="password"
-                                        value={formData.password}
-                                        onChange={handleInputChange}
-                                        className="w-full px-4 py-2.5 pr-12 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                        placeholder="Password"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 transition-colors"
-                                    >
-                                        {showPassword ? (
-                                            <EyeOff className="h-5 w-5" />
-                                        ) : (
-                                            <Eye className="h-5 w-5" />
-                                        )}
-                                    </button>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700 transition-colors"
+                                >
+                                    {showPassword ? (
+                                        <EyeOff className="h-5 w-5" />
+                                    ) : (
+                                        <Eye className="h-5 w-5" />
+                                    )}
+                                </button>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -417,47 +422,44 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                         <h3 className="text-lg font-medium text-gray-800 mb-4">Additional Information</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* PAN No */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Company PAN No<span className="text-red-500">*</span>:
-                                </label>
+                            <div className="relative">
                                 <input
                                     type="text"
                                     name="pan_no"
                                     value={formData.pan_no}
                                     onChange={handleInputChange}
-                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                    placeholder="Enter 10 digit PAN No"
+                                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                                    placeholder=" "
                                     maxLength={10}
                                     required
                                 />
+                                <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                    Company PAN No<span className="text-red-500">*</span>
+                                </label>
                             </div>
                             {/* TAN No */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Company TAN No<span className="text-red-500">*</span>:
-                                </label>
+                            <div className="relative">
                                 <input
                                     type="text"
                                     name="tan_no"
                                     value={formData.tan_no}
                                     onChange={handleInputChange}
-                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                                    placeholder="Enter 10 digit TAN No"
+                                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                                    placeholder=" "
                                     maxLength={10}
                                     required
                                 />
+                                <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                    Company TAN No<span className="text-red-500">*</span>
+                                </label>
                             </div>
                             {/* Company Type Dropdown */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Company Type<span className="text-red-500">*</span>:
-                                </label>
+                            <div className="relative">
                                 <select
                                     name="company_type"
                                     value={formData.company_type}
                                     onChange={handleSelectChange}
-                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer appearance-none"
                                     required
                                 >
                                     <option value="">Select Type</option>
@@ -467,17 +469,17 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                     <option value="LLP">LLP</option>
                                     <option value="Sole Proprietorship">Sole Proprietorship</option>
                                 </select>
+                                <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                    Company Type<span className="text-red-500">*</span>
+                                </label>
                             </div>
                             {/* Sector Dropdown */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                                    Sector<span className="text-red-500">*</span>:
-                                </label>
+                            <div className="relative">
                                 <select
                                     name="sector"
                                     value={formData.sector}
                                     onChange={handleSelectChange}
-                                    className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer appearance-none"
                                     required
                                 >
                                     <option value="">Select Sector</option>
@@ -488,6 +490,23 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                     <option value="Education">Education</option>
                                     <option value="Retail">Retail</option>
                                 </select>
+                                <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                    Sector<span className="text-red-500">*</span>
+                                </label>
+                            </div>
+                            {/* Service Commences On */}
+                            <div className="relative">
+                                <input
+                                    type="month"
+                                    name="service_commences_on"
+                                    value={formData.service_commences_on}
+                                    onChange={handleInputChange}
+                                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                                    required
+                                />
+                                <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                                    Service Commences On<span className="text-red-500">*</span>
+                                </label>
                             </div>
                         </div>
                     </div>
