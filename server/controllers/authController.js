@@ -102,6 +102,7 @@
 //   }
 // };
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 import dotenv from 'dotenv';
 import db from '../config/db.js';
@@ -134,6 +135,28 @@ export const register = async (req, res) => {
   }
 };
 
+// Helper function to check if password is hashed
+const isPasswordHashed = (password) => {
+  // bcrypt hashes start with $2a$, $2b$, $2x$, or $2y$ followed by cost and salt
+  // bcrypt hashes are typically 60 characters long
+  const hasValidPrefix = password.startsWith('$2a$') || password.startsWith('$2b$') || 
+                        password.startsWith('$2x$') || password.startsWith('$2y$');
+  const hasValidLength = password.length === 60;
+  
+  return hasValidPrefix && hasValidLength;
+};
+
+// Helper function to verify password (handles both hashed and plain-text)
+const verifyPassword = async (inputPassword, storedPassword) => {
+  if (isPasswordHashed(storedPassword)) {
+    // Password is hashed, use bcrypt to compare
+    return await bcrypt.compare(inputPassword, storedPassword);
+  } else {
+    // Password is plain-text, do direct comparison
+    return inputPassword === storedPassword;
+  }
+};
+
 export const login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -145,18 +168,25 @@ export const login = async (req, res) => {
     }
 
     // Find the user with matching password and super_admin role
-    const validUser = users.find(user => 
-      user.password === password && user.role === 'super_admin'
-    );
+    let validUser = null;
+    for (const user of users) {
+      const isPasswordValid = await verifyPassword(password, user.password);
+      if (isPasswordValid && user.role === 'super_admin') {
+        validUser = user;
+        break;
+      }
+    }
 
     if (!validUser) {
-      // Check if any user exists with this email but wrong password
+      // Check if any user exists with this email but wrong password or role
       const userExists = users.some(user => user.email === email);
       if (userExists) {
         // Check if user exists but doesn't have super_admin role
-        const userWithoutRole = users.find(user => user.password === password && user.role !== 'super_admin');
-        if (userWithoutRole) {
-          return res.status(403).json({ error: 'User is not a super admin and does not have access to login' });
+        for (const user of users) {
+          const isPasswordValid = await verifyPassword(password, user.password);
+          if (isPasswordValid && user.role !== 'super_admin') {
+            return res.status(403).json({ error: 'User is not a super admin and does not have access to login' });
+          }
         }
         return res.status(401).json({ error: 'Invalid credentials' });
       }
