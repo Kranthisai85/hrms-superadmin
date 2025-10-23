@@ -138,12 +138,12 @@ export const getCompanies = async (req, res, next) => {
           c.*,
           u.password,
           COALESCE(e.email, u.email) as email,
-          COALESCE(e.phone, u.phone) as phone,
-          COALESCE(e.first_name, u.name) as contact_person,
+          u.phone as phone,
+          u.name as contact_person,
           e.id as employee_id
         FROM companies c
         LEFT JOIN users u ON c.super_admin_id = u.id
-        LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
+        LEFT JOIN employees e ON e.user_id = u.id AND u.company_id = c.id
       `);
       
       // Format service_commences_on to avoid timezone issues
@@ -158,6 +158,7 @@ export const getCompanies = async (req, res, next) => {
       
       res.status(200).json(formattedCompanies);
     } catch (employeeErr) {
+      console.log(employeeErr);
       // If employees table doesn't exist, fall back to users table only
       console.log("Employees table not found, using users table");
       const [companies] = await db.query(`
@@ -224,7 +225,7 @@ export const getCompanyById = async (req, res, next) => {
       res.status(200).json(companyData);
     } catch (employeeErr) {
       // If employees table doesn't exist, fall back to users table only
-      console.log("Employees table not found, using users table");
+      console.log("Employees table not found, using users tablessss");
       const [company] = await db.query(`
         SELECT 
           c.*,

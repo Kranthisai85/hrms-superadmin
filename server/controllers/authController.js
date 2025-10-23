@@ -139,29 +139,38 @@ export const login = async (req, res) => {
 
   try {
     // Find the user by email
-    const [user] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (!user || user.length === 0) {
+    const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+    if (!users || users.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Directly compare the plain-text password with the stored password
-    console.log(password, user[0].password);
-    if (password !== user[0].password) {
+    // Find the user with matching password and super_admin role
+    const validUser = users.find(user => 
+      user.password === password && user.role === 'super_admin'
+    );
+
+    if (!validUser) {
+      // Check if any user exists with this email but wrong password
+      const userExists = users.some(user => user.email === email);
+      if (userExists) {
+        // Check if user exists but doesn't have super_admin role
+        const userWithoutRole = users.find(user => user.password === password && user.role !== 'super_admin');
+        if (userWithoutRole) {
+          return res.status(403).json({ error: 'User is not a super admin and does not have access to login' });
+        }
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = jwt.sign(
-      { id: user[0].id },  // Omit email if not needed
+      { id: validUser.id },  // Omit email if not needed
       process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
 
-
-    // res.json({ token });
-
-
     // Login successful
-    res.status(200).json({ message: 'Login successful', user: user[0], token });
+    res.status(200).json({ message: 'Login successful', user: validUser, token });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
