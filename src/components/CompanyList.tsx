@@ -172,20 +172,15 @@ export default function CompanyList({ onNavigateBack }: { onNavigateBack: () => 
         setCurrentPage(1); // Reset to first page when searching
     };
 
-    const handleUpdate = async (company: Company) => {
-        setUpdateLoading(true);
-        try {
-            // Fetch latest company details from backend
-            const response = await axios.get(`${API_BASE_URL}/companies/${company.id}`);
-            console.log('API Response:', response.data);
-            console.log('service_commences_on from API:', response.data.service_commences_on);
-            setCompanyToUpdate(response.data); // Set the latest company data
-            setShowCreateModal(true); // Open the modal
-        } catch (err) {
-            alert('Failed to fetch latest company details.');
-        } finally {
-            setUpdateLoading(false);
-        }
+    const handleUpdate = (company: Company) => {
+        // We already have the updated company data in our state.
+        // No need to make a new API call.
+        
+        // Find the most up-to-date company data from our local state
+        const latestCompanyData = companies.find(c => c.id === company.id);
+        
+        setCompanyToUpdate(latestCompanyData || company); // Pass the fresh data
+        setShowCreateModal(true); // Open the modal
     };
 
     const handleDelete = (companyId: string) => {
