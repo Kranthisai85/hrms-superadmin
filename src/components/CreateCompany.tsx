@@ -24,6 +24,10 @@ interface CompanyFormData {
     company_type: string; // Added
     sector: string; // Added
     service_commences_on: string; // Added
+    /* --- ADD THESE THREE LINES --- */
+    module_employee: boolean;
+    module_attendance: boolean;
+    module_payroll: boolean;
 }
 
 interface CreateCompanyProps {
@@ -50,9 +54,14 @@ interface CreateCompanyProps {
         company_type: string; // Added
         sector: string; // Added
         service_commences_on: string; // Added
+   /* --- ADD THESE THREE LINES --- */
+        module_employee: boolean | number;
+        module_attendance: boolean | number;
+        module_payroll: boolean | number;
     } | null; // Optional company for updating
     onCompanyUpdated?: (updatedCompany: any) => void; // Add this line
 }
+
 
 export default function CreateCompany({ onClose, company, onCompanyUpdated }: CreateCompanyProps): JSX.Element {
     const [formData, setFormData] = useState<CompanyFormData>({
@@ -76,6 +85,9 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
         company_type: '', // Added
         sector: '', // Added
         service_commences_on: '', // Added
+        module_employee: true,
+        module_attendance: true,
+        module_payroll: true,
     });
     // Add logoPreview state
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -105,6 +117,9 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                 company_type: company.company_type || '',
                 sector: company.sector || '',
                 service_commences_on: company.service_commences_on || '',
+                module_employee: Boolean(Number(company.module_employee)),
+                module_attendance: Boolean(Number(company.module_attendance)),
+                module_payroll: Boolean(Number(company.module_payroll)),
             });
             // Set logo preview to existing logo if present
             setLogoPreview(company.logo ? company.logo : null);
@@ -215,9 +230,14 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                 formDataToSend.append('logo', logoUrl || '');
             } else if (key === 'invite_admin') {
                 formDataToSend.append('invite_admin', value ? '1' : '0');
+                } else if (key === 'module_employee' || key === 'module_attendance' || key === 'module_payroll') {
+                formDataToSend.append(key, value ? '1' : '0');
+
             } else if (value !== null && value !== undefined) {
-                formDataToSend.append(key, value);
+                formDataToSend.append(key, value as string); // Added 'as string' to match your original
             }
+            
+            
         });
 
         try {
@@ -240,6 +260,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                 if (onCompanyUpdated) {
                     onCompanyUpdated(response.data.company || response.data); // Call callback with updated company
                 }
+                localStorage.setItem("companyData", JSON.stringify(response.data.company || response.data));
             } else {
                 // Create a new company
                 response = await axios.post(`${API_BASE_URL}/companies`, formDataToSend, {
@@ -296,6 +317,9 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
             company_type: '', // Added
             sector: '', // Added
             service_commences_on: '', // Added
+            module_employee: true,
+            module_attendance: true,
+            module_payroll: true,
         });
         setLogoPreview(null);
     };
@@ -439,6 +463,7 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                     Company PAN No<span className="text-red-500">*</span>
                                 </label>
                             </div>
+
                             {/* TAN No */}
                             <div className="relative">
                                 <input
@@ -509,10 +534,49 @@ export default function CreateCompany({ onClose, company, onCompanyUpdated }: Cr
                                 />
                                 <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
                                     Service Commences On<span className="text-red-500">*</span>
+                                    </label>
+                                    </div> {/* <-- THIS DIV NOW CLOSES CORRECTLY */}
+                        </div> {/* <-- This closes the "grid" div */}
+                    </div> {/* <-- This closes the "Additional Information" div */}
+                                    {/* --- ADD THIS ENTIRE SECTION --- */}
+                    {/* This will ONLY appear when in "Update" mode (when 'company' prop exists) */}
+                    {company && (
+                        <div className="mt-8 border-t border-gray-200 pt-6">
+                            <h3 className="text-lg font-medium text-gray-800 mb-4">Module Access Control</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <label className="flex items-center space-x-3">
+                                    <input
+                                        type="checkbox"
+                                        name="module_employee"
+                                        checked={formData.module_employee}
+                                        onChange={handleInputChange}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">Employee Module</span>
                                 </label>
+                                <label className="flex items-center space-x-3">
+                                    <input
+                                        type="checkbox"
+                                        name="module_attendance"
+                                        checked={formData.module_attendance}
+                                        onChange={handleInputChange}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">Attendance Module</span>
+                                </label>
+                                <label className="flex items-center space-x-3">
+                                    <input
+                                        type="checkbox"
+                                        name="module_payroll"
+                                        checked={formData.module_payroll}
+                                        onChange={handleInputChange}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm text-gray-700">Payroll Module</span>
+                               </label>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="mt-6">
                         <label className="flex items-center space-x-3">
