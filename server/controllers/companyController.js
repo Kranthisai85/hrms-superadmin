@@ -16,7 +16,8 @@ function getCompanySelectQueryWithEmployee(
       ${employeeAlias}.id as employee_id,
       ${companyAlias}.module_employee,
       ${companyAlias}.module_attendance,
-      ${companyAlias}.module_payroll
+      ${companyAlias}.module_payroll,
+      ${companyAlias}.module_reports
   `;
 }
 
@@ -34,7 +35,8 @@ function getCompanySelectQueryWithoutEmployee(
       ${companyAlias}.contact_person as contact_person,
       ${companyAlias}.module_employee,
       ${companyAlias}.module_attendance,
-      ${companyAlias}.module_payroll
+      ${companyAlias}.module_payroll,
+      ${companyAlias}.module_reports
   `;
 }
 export const createCompany = async (req, res, next) => {
@@ -377,6 +379,7 @@ export const updateCompany = async (req, res, next) => {
       "module_employee",
       "module_attendance",
       "module_payroll",
+      "module_reports",
     ];
     const userFields = [
       "contact_person",
