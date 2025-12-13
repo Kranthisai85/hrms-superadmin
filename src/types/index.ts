@@ -4,10 +4,10 @@ export interface Company {
   name: string;
   address: string;
   // Note: These fields are now stored in different tables
-  email: string;              // From employees.email
-  phone: string;              // From employees.phone  
-  contact_person: string;     // From employees.first_name
-  password: string;           // From users.password (admin)
+  email: string; // From employees.email
+  phone: string; // From employees.phone
+  contact_person: string; // From employees.first_name
+  password: string; // From users.password (admin)
   // Company-specific fields
   pf_code: string;
   esi_code: string;
@@ -25,8 +25,13 @@ export interface Company {
   company_type: string;
   sector: string;
   service_commences_on: string;
-  is_active?: boolean;        // Optional active status
-  employee_id?: string;       // Optional employee ID
+  is_active?: boolean; // Optional active status
+  employee_id?: string; // Optional employee ID
+  // Module fields
+  module_employee: boolean | number;
+  module_attendance: boolean | number;
+  module_payroll: boolean | number;
+  module_reports: boolean | number;
 }
 
 export interface User {
@@ -34,7 +39,7 @@ export interface User {
   password: string;
 }
 
-export type PageType = 'home' | 'companies' | 'create' | 'users' | 'roles';
+export type PageType = "home" | "companies" | "create" | "users" | "roles";
 
 export interface Permission {
   all: boolean;
@@ -52,7 +57,7 @@ export interface ModulePermission extends Permission {
 export interface Role {
   id: string;
   name: string;
-  type: 'admin' | 'manager' | 'employee' | 'custom';
+  type: "admin" | "manager" | "employee" | "custom";
   permissions: {
     [key: string]: Permission;
   };
