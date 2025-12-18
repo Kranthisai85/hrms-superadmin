@@ -386,6 +386,8 @@ export const updateCompany = async (req, res, next) => {
       "date_of_birth",
       "gender",
       "blood_group",
+      "email",
+      "password",
     ];
 
     const companyData = {};
@@ -414,6 +416,11 @@ export const updateCompany = async (req, res, next) => {
       if (updatedData[key] !== undefined) {
         if (key === "contact_person") {
           userData.name = updatedData[key];
+        } else if (key === "password") {
+          // Only update password in users table if it's NOT empty
+          if (updatedData[key]) {
+            userData[key] = updatedData[key];
+          }
         } else {
           userData[key] = updatedData[key];
         }
