@@ -39,6 +39,44 @@ function getCompanySelectQueryWithoutEmployee(
       ${companyAlias}.module_reports
   `;
 }
+
+// 3. Ensure module values are always numbers (not strings)
+function ensureModuleValuesAreNumbers(company) {
+  return {
+    ...company,
+    module_employee: Number(company.module_employee),
+    module_attendance: Number(company.module_attendance),
+    module_payroll: Number(company.module_payroll),
+    module_reports: Number(company.module_reports),
+  };
+}
+
+// 4. Validate and normalize module fields
+function validateModuleFields(data) {
+  const validModules = [
+    "module_employee",
+    "module_attendance",
+    "module_payroll",
+    "module_reports",
+  ];
+
+  validModules.forEach((module) => {
+    if (data[module] !== undefined) {
+      // Accept both "1"/"0" (strings) and 1/0 (numbers) and true/false (booleans)
+      const value = String(data[module]).toLowerCase();
+      if (!["0", "1", "true", "false"].includes(value)) {
+        throw new Error(
+          `Invalid value for ${module}: must be 0/1 or true/false, got "${data[module]}"`
+        );
+      }
+      // Convert to number for consistency (0 or 1)
+      data[module] = ["1", "true"].includes(value) ? 1 : 0;
+    }
+  });
+
+  return data;
+}
+
 export const createCompany = async (req, res, next) => {
   const {
     code,
@@ -61,7 +99,12 @@ export const createCompany = async (req, res, next) => {
     tan_no,
     company_type,
     sector,
-    service_commences_on, // new fields
+    service_commences_on,
+    // Module fields
+    module_employee = 1,
+    module_attendance = 1,
+    module_payroll = 1,
+    module_reports = 0,
     // For user:
     last_name,
     date_of_birth,
@@ -69,19 +112,28 @@ export const createCompany = async (req, res, next) => {
     blood_group,
   } = req.body;
 
-  // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
-  let formattedServiceCommencesOn = service_commences_on;
-  if (service_commences_on && service_commences_on.match(/^\d{4}-\d{2}$/)) {
-    formattedServiceCommencesOn = service_commences_on + "-01";
-  }
-
   try {
+    // Validate and normalize module fields
+    const validatedData = validateModuleFields({
+      module_employee,
+      module_attendance,
+      module_payroll,
+      module_reports,
+    });
+
+    // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
+    let formattedServiceCommencesOn = service_commences_on;
+    if (service_commences_on && service_commences_on.match(/^\d{4}-\d{2}$/)) {
+      formattedServiceCommencesOn = service_commences_on + "-01";
+    }
+
     // 1. First, create the company
     const [companyResult] = await db.query(
       `INSERT INTO companies 
       (code, name, address, pf_code, esi_code, labour_license, domain_name, 
-       website, logo, pan_no, tan_no, company_type, sector, service_commences_on, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+       website, logo, pan_no, tan_no, company_type, sector, service_commences_on, 
+       module_employee, module_attendance, module_payroll, module_reports, created_at, updated_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         code,
         name,
@@ -97,6 +149,10 @@ export const createCompany = async (req, res, next) => {
         company_type,
         sector,
         formattedServiceCommencesOn,
+        validatedData.module_employee,
+        validatedData.module_attendance,
+        validatedData.module_payroll,
+        validatedData.module_reports,
       ]
     );
 
@@ -203,6 +259,14 @@ export const createCompany = async (req, res, next) => {
       employee_id: employeeId,
     });
   } catch (err) {
+    // Check if this is a validation error for module fields
+    if (err.message && err.message.includes("Invalid value for")) {
+      console.error("Module validation error:", err.message);
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+      });
+    }
     console.error("Error creating company:", err);
     next(err);
   }
@@ -229,7 +293,15 @@ export const getCompanies = async (req, res, next) => {
             "-" +
             String(date.getMonth() + 1).padStart(2, "0");
         }
-        return company;
+        return ensureModuleValuesAreNumbers(company);
+      });
+
+      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
+      res.set({
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
       });
 
       res.status(200).json(formattedCompanies);
@@ -252,7 +324,15 @@ export const getCompanies = async (req, res, next) => {
             "-" +
             String(date.getMonth() + 1).padStart(2, "0");
         }
-        return company;
+        return ensureModuleValuesAreNumbers(company);
+      });
+
+      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
+      res.set({
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
       });
 
       res.status(200).json(formattedCompanies);
@@ -266,6 +346,36 @@ export const getCompanyById = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
 
   try {
+    // 🆕 Set cache-busting headers and check for skip cache flag
+    res.set({
+      "Cache-Control":
+        "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    // Check if we should skip cache (for fresh updates after modifications)
+    const skipCache =
+      req.query.skipCache === "true" || req.headers["x-skip-cache"];
+    const cacheKey = `companies:${id}`;
+
+    // 🆕 Check cache if available and not skipping
+    if (
+      !skipCache &&
+      typeof global.cacheService !== "undefined" &&
+      global.cacheService?.get
+    ) {
+      try {
+        const cachedData = global.cacheService.get(cacheKey);
+        if (cachedData) {
+          console.log("📦 Returning cached data for company:", id);
+          return res.json(cachedData);
+        }
+      } catch (cacheErr) {
+        console.log("ℹ️ Error retrieving from cache:", cacheErr.message);
+      }
+    }
+
     // Try to join with employees table, fall back to users if it doesn't exist
     try {
       const [company] = await db.query(
@@ -294,10 +404,34 @@ export const getCompanyById = async (req, res, next) => {
           String(date.getMonth() + 1).padStart(2, "0");
       }
 
-      res.status(200).json(companyData);
+      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
+      res.set({
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
+      });
+
+      const responseData = ensureModuleValuesAreNumbers(companyData);
+
+      // 🆕 Set cache with TTL (30 minutes) if cacheService available
+      try {
+        if (
+          typeof global.cacheService !== "undefined" &&
+          global.cacheService?.set
+        ) {
+          global.cacheService.set(cacheKey, responseData, 1800); // 30 minutes TTL
+          console.log("💾 Cached company data for key:", cacheKey);
+        }
+      } catch (cacheErr) {
+        console.log("ℹ️ Error setting cache:", cacheErr.message);
+      }
+
+      console.log("✅ Returning fresh company data:", companyData);
+      res.status(200).json(responseData);
     } catch (employeeErr) {
       // If employees table doesn't exist, fall back to users table only
-      console.log("Employees table not found, using users tablessss");
+      console.log("Employees table not found, using users table only");
       const [company] = await db.query(
         `
         ${getCompanySelectQueryWithEmployee("c", "u")}
@@ -323,7 +457,31 @@ export const getCompanyById = async (req, res, next) => {
           String(date.getMonth() + 1).padStart(2, "0");
       }
 
-      res.status(200).json(companyData);
+      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
+      res.set({
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
+      });
+
+      const responseData = ensureModuleValuesAreNumbers(companyData);
+
+      // 🆕 Set cache with TTL (30 minutes) if cacheService available
+      try {
+        if (
+          typeof global.cacheService !== "undefined" &&
+          global.cacheService?.set
+        ) {
+          global.cacheService.set(cacheKey, responseData, 1800); // 30 minutes TTL
+          console.log("💾 Cached company data for key:", cacheKey);
+        }
+      } catch (cacheErr) {
+        console.log("ℹ️ Error setting cache:", cacheErr.message);
+      }
+
+      console.log("✅ Returning fresh company data:", companyData);
+      res.status(200).json(responseData);
     }
   } catch (err) {
     console.error("Error fetching company by ID:", err);
@@ -334,17 +492,29 @@ export const getCompanyById = async (req, res, next) => {
 // Update a company by ID
 export const updateCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
-  const updatedData = req.body; // Get the updated data from the request body
-
-  // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
-  if (
-    updatedData.service_commences_on &&
-    updatedData.service_commences_on.match(/^\d{4}-\d{2}$/)
-  ) {
-    updatedData.service_commences_on = updatedData.service_commences_on + "-01";
-  }
+  let updatedData = req.body; // Get the updated data from the request body
 
   try {
+    // 🔥 PREVENT CACHING - Ensure browser doesn't cache updated company data
+    res.set({
+      "Cache-Control":
+        "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    // Validate and normalize module fields
+    updatedData = validateModuleFields(updatedData);
+
+    // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
+    if (
+      updatedData.service_commences_on &&
+      updatedData.service_commences_on.match(/^\d{4}-\d{2}$/)
+    ) {
+      updatedData.service_commences_on =
+        updatedData.service_commences_on + "-01";
+    }
+
     // First, get the company to find the super admin ID
     const [company] = await db.query(
       "SELECT super_admin_id FROM companies WHERE id = ?",
@@ -410,6 +580,8 @@ export const updateCompany = async (req, res, next) => {
         }
       }
     }
+
+    console.log("Data to update in companies table:", companyData);
 
     // Filter fields for user table (map contact_person to name)
     for (const key of userFields) {
@@ -505,9 +677,42 @@ export const updateCompany = async (req, res, next) => {
           String(date.getMonth() + 1).padStart(2, "0");
       }
 
+      console.log("Updated company data being returned:", {
+        module_employee: companyData.module_employee,
+        module_attendance: companyData.module_attendance,
+        module_payroll: companyData.module_payroll,
+        module_reports: companyData.module_reports,
+      });
+
+      // 🆕 CLEAR SPECIFIC CACHE KEY - Explicit cache clearing
+      const cacheKey = `companies:${id}`;
+      try {
+        // Try to clear cache if cacheService exists and has del method
+        if (
+          typeof global.cacheService !== "undefined" &&
+          global.cacheService?.del
+        ) {
+          global.cacheService.del(cacheKey);
+          console.log("🔄 Cache cleared for key:", cacheKey);
+        }
+      } catch (cacheErr) {
+        console.log(
+          "ℹ️ Cache service not available or error clearing cache:",
+          cacheErr.message
+        );
+      }
+
+      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
+      res.set({
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
+      });
+
       res.status(200).json({
         message: "Company updated successfully",
-        company: companyData,
+        company: ensureModuleValuesAreNumbers(companyData),
       });
     } catch (employeeErr) {
       // Fall back to users table only
@@ -532,12 +737,53 @@ export const updateCompany = async (req, res, next) => {
           String(date.getMonth() + 1).padStart(2, "0");
       }
 
+      console.log("Updated company data being returned (no employee):", {
+        module_employee: companyData.module_employee,
+        module_attendance: companyData.module_attendance,
+        module_payroll: companyData.module_payroll,
+        module_reports: companyData.module_reports,
+      });
+
+      // 🆕 CLEAR SPECIFIC CACHE KEY - Explicit cache clearing
+      const cacheKey = `companies:${id}`;
+      try {
+        // Try to clear cache if cacheService exists and has del method
+        if (
+          typeof global.cacheService !== "undefined" &&
+          global.cacheService?.del
+        ) {
+          global.cacheService.del(cacheKey);
+          console.log("🔄 Cache cleared for key:", cacheKey);
+        }
+      } catch (cacheErr) {
+        console.log(
+          "ℹ️ Cache service not available or error clearing cache:",
+          cacheErr.message
+        );
+      }
+
+      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
+      res.set({
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
+      });
+
       res.status(200).json({
         message: "Company updated successfully",
-        company: companyData,
+        company: ensureModuleValuesAreNumbers(companyData),
       });
     }
   } catch (err) {
+    // Check if this is a validation error for module fields
+    if (err.message && err.message.includes("Invalid value for")) {
+      console.error("Module validation error:", err.message);
+      return res.status(400).json({
+        success: false,
+        error: err.message,
+      });
+    }
     console.error("Error updating company:", err);
     next(err);
   }

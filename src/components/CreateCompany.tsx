@@ -90,18 +90,26 @@ export default function CreateCompany({
     company_type: "", // Added
     sector: "", // Added
     service_commences_on: "", // Added
-    module_employee: true,
-    module_attendance: true,
-    module_payroll: true,
-    module_reports: true,
+    module_employee: false,
+    module_attendance: false,
+    module_payroll: false,
+    module_reports: false,
   });
   // Add logoPreview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
+  // Helper function to safely convert database values to boolean
+  const toBoolean = (value: any): boolean => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    if (typeof value === "string") {
+      return value === "1" || value.toLowerCase() === "true";
+    }
+    return false;
+  };
+
   useEffect(() => {
     if (company) {
-      console.log("Company data received:", company);
-      console.log("service_commences_on value:", company.service_commences_on);
       setFormData({
         code: company.code || "",
         name: company.name || "",
@@ -117,27 +125,48 @@ export default function CreateCompany({
         super_admin_id: company.super_admin_id || "",
         password: company.password || "",
         logo: null, // Always null initially
-        invite_admin: Boolean(Number(company.invite_admin)),
+        invite_admin: toBoolean(company.invite_admin),
         pan_no: company.pan_no || "",
         tan_no: company.tan_no || "",
         company_type: company.company_type || "",
         sector: company.sector || "",
         service_commences_on: company.service_commences_on || "",
-        module_employee: Boolean(Number(company.module_employee)),
-        module_attendance: Boolean(Number(company.module_attendance)),
-        module_payroll: Boolean(Number(company.module_payroll)),
-        module_reports: Boolean(Number(company.module_reports)),
+        module_employee: toBoolean(company.module_employee),
+        module_attendance: toBoolean(company.module_attendance),
+        module_payroll: toBoolean(company.module_payroll),
+        module_reports: toBoolean(company.module_reports),
       });
       // Set logo preview to existing logo if present
       setLogoPreview(company.logo ? company.logo : null);
     } else {
       setLogoPreview(null);
     }
-  }, [company]);
+  }, [
+    company?.id,
+    company?.module_employee,
+    company?.module_attendance,
+    company?.module_payroll,
+    company?.module_reports,
+  ]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Separate useEffect to monitor formData changes for modules
+  useEffect(() => {
+    console.log("formData modules changed:", {
+      module_employee: formData.module_employee,
+      module_attendance: formData.module_attendance,
+      module_payroll: formData.module_payroll,
+      module_reports: formData.module_reports,
+    });
+  }, [
+    formData.module_employee,
+    formData.module_attendance,
+    formData.module_payroll,
+    formData.module_reports,
+  ]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -243,7 +272,11 @@ export default function CreateCompany({
         key === "module_payroll" ||
         key === "module_reports"
       ) {
-        formDataToSend.append(key, value ? "1" : "0");
+        const boolValue = value ? "1" : "0";
+        formDataToSend.append(key, boolValue);
+        console.log(
+          `Appending ${key}: ${value} (boolean) -> ${boolValue} (string)`
+        );
       } else if (value !== null && value !== undefined) {
         formDataToSend.append(key, value as string); // Added 'as string' to match your original
       }
@@ -258,6 +291,7 @@ export default function CreateCompany({
         formDataToSend.forEach((v, k) => {
           plainData[k] = v;
         });
+        console.log("Sending update request with data:", plainData);
         response = await axios.put(
           `${API_BASE_URL}/companies/${company.id}`,
           plainData,
@@ -267,6 +301,7 @@ export default function CreateCompany({
             },
           }
         );
+        console.log("Update response:", response.data);
         alert("Company updated successfully!");
         if (onCompanyUpdated) {
           onCompanyUpdated(response.data.company || response.data); // Call callback with updated company
@@ -339,10 +374,10 @@ export default function CreateCompany({
       company_type: "", // Added
       sector: "", // Added
       service_commences_on: "", // Added
-      module_employee: true,
-      module_attendance: true,
-      module_payroll: true,
-      module_reports: true,
+      module_employee: false,
+      module_attendance: false,
+      module_payroll: false,
+      module_reports: false,
     });
     setLogoPreview(null);
   };
