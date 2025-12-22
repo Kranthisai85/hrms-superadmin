@@ -90,10 +90,10 @@ export default function CreateCompany({
     company_type: "", // Added
     sector: "", // Added
     service_commences_on: "", // Added
-    module_employee: false,
-    module_attendance: false,
-    module_payroll: false,
-    module_reports: false,
+    module_employee: true, // Default: enabled
+    module_attendance: false, // Default: disabled
+    module_payroll: false, // Default: disabled
+    module_reports: false, // Default: disabled
   });
   // Add logoPreview state
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -247,6 +247,17 @@ export default function CreateCompany({
       return;
     }
 
+    // Website URL validation (optional field - only validate if filled)
+    if (formData.website && formData.website.trim() !== "") {
+      // Allow: http://, https://, www., or plain domain names
+      const urlRegex = /^(https?:\/\/)?(www\.)?[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?(\.[a-zA-Z]{2,})+(\/.*)?$/i;
+      if (!urlRegex.test(formData.website.trim())) {
+        setError("Please enter a valid website URL (e.g., www.example.com, https://example.com, or example.com)");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     let logoUrl = null;
     // If a new logo is uploaded, upload it
     if (formData.logo) {
@@ -374,17 +385,17 @@ export default function CreateCompany({
       company_type: "", // Added
       sector: "", // Added
       service_commences_on: "", // Added
-      module_employee: false,
-      module_attendance: false,
-      module_payroll: false,
-      module_reports: false,
+      module_employee: true, // Default: enabled
+      module_attendance: false, // Default: disabled
+      module_payroll: false, // Default: disabled
+      module_reports: false, // Default: disabled
     });
     setLogoPreview(null);
   };
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl max-h-[95vh] overflow-y-auto">
+      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl max-h-[95vh] flex flex-col">
         <div className="p-2 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
           <h1 className="pl-6 text-2xl font-semibold text-gray-800">
             {company ? `Editing - ${company.name}` : "Create Company"}
@@ -397,7 +408,7 @@ export default function CreateCompany({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8">
+        <form id="company-form" onSubmit={handleSubmit} className="p-8 overflow-y-auto flex-1">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Left Column */}
             <div className="space-y-5">
@@ -444,7 +455,7 @@ export default function CreateCompany({
                   label: "Contact Person",
                   type: "text",
                 },
-                { name: "website", label: "Website", type: "url" },
+                { name: "website", label: "Website", type: "text" },
                 // { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
               ].map((field) => (
                 <div key={field.name} className="relative">
@@ -614,59 +625,56 @@ export default function CreateCompany({
             {/* <-- This closes the "grid" div */}
           </div>{" "}
           {/* <-- This closes the "Additional Information" div */}
-          {/* --- ADD THIS ENTIRE SECTION --- */}
-          {/* This will ONLY appear when in "Update" mode (when 'company' prop exists) */}
-          {company && (
-            <div className="mt-8 border-t border-gray-200 pt-6">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">
-                Module Access Control
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="module_employee"
-                    checked={formData.module_employee}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">Employee Module</span>
-                </label>
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="module_attendance"
-                    checked={formData.module_attendance}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">
-                    Attendance Module
-                  </span>
-                </label>
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="module_payroll"
-                    checked={formData.module_payroll}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">Payroll Module</span>
-                </label>
-                <label className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    name="module_reports"
-                    checked={formData.module_reports}
-                    onChange={handleInputChange}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700">Reports Module</span>
-                </label>
-              </div>
+          {/* Module Access Control - Available for both Create and Edit */}
+          <div className="mt-8 border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-medium text-gray-800 mb-4">
+              Module Access Control
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  name="module_employee"
+                  checked={formData.module_employee}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Employee Module</span>
+              </label>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  name="module_attendance"
+                  checked={formData.module_attendance}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">
+                  Attendance Module
+                </span>
+              </label>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  name="module_payroll"
+                  checked={formData.module_payroll}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Payroll Module</span>
+              </label>
+              <label className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  name="module_reports"
+                  checked={formData.module_reports}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-700">Reports Module</span>
+              </label>
             </div>
-          )}
+          </div>
           <div className="mt-6">
             <label className="flex items-center space-x-3">
               <input
@@ -686,48 +694,50 @@ export default function CreateCompany({
               {error}
             </div>
           )}
-          <div className="mt-8 flex justify-between items-center">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:ring-4 focus:ring-gray-200 transition-all"
-            >
-              Cancel
-            </button>
-            <div className="flex gap-3">
-              {!company?.id && (
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="px-6 py-2.5 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:ring-4 focus:ring-gray-200 transition-all"
-                >
-                  Reset Form
-                </button>
-              )}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:bg-blue-400"
-              >
-                {company?.id
-                  ? isSubmitting
-                    ? "Updating..."
-                    : "Update Company"
-                  : isSubmitting
-                  ? "Saving..."
-                  : "Create Company"}
-              </button>
-              {/* {company?.id && (
-                            <button
-                                type="button"
-                                className="px-6 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 focus:ring-4 focus:ring-red-200 transition-all"
-                            >
-                                Delete Company
-                            </button>
-                        )} */}
-            </div>
-          </div>
         </form>
+        
+        <div className="p-6 border-t border-gray-200 flex justify-between items-center sticky bottom-0 bg-white z-10">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:ring-4 focus:ring-gray-200 transition-all"
+          >
+            Cancel
+          </button>
+          <div className="flex gap-3">
+            {!company?.id && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="px-6 py-2.5 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:ring-4 focus:ring-gray-200 transition-all"
+              >
+                Reset Form
+              </button>
+            )}
+            <button
+              type="submit"
+              form="company-form"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:bg-blue-400"
+            >
+              {company?.id
+                ? isSubmitting
+                  ? "Updating..."
+                  : "Update Company"
+                : isSubmitting
+                ? "Saving..."
+                : "Create Company"}
+            </button>
+            {/* {company?.id && (
+              <button
+                type="button"
+                className="px-6 py-2.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 focus:ring-4 focus:ring-red-200 transition-all"
+              >
+                Delete Company
+              </button>
+            )} */}
+          </div>
+        </div>
       </div>
     </div>
   );

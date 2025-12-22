@@ -77,6 +77,151 @@ function validateModuleFields(data) {
   return data;
 }
 
+// 5. Format date to MySQL datetime format (YYYY-MM-DD HH:mm:ss)
+function formatDate(date) {
+  return date.toISOString().slice(0, 19).replace("T", " ");
+}
+
+// 6. Default reasons that should be created for every new company
+// These are 9 predefined reasons: 5 resignation reasons + 4 termination reasons
+const DEFAULT_REASONS = [
+  {
+    name: "Better Opportunity",
+    type: "resignation",
+    status: "active",
+  },
+  {
+    name: "Family Issues",
+    type: "resignation",
+    status: "active",
+  },
+  {
+    name: "Health Issues",
+    type: "resignation",
+    status: "active",
+  },
+  {
+    name: "Distance",
+    type: "resignation",
+    status: "active",
+  },
+  {
+    name: "Personal Reason",
+    type: "resignation",
+    status: "active",
+  },
+  {
+    name: "Misconduct",
+    type: "termination",
+    status: "active",
+  },
+  {
+    name: "Poor Performance",
+    type: "termination",
+    status: "active",
+  },
+  {
+    name: "Punctuality",
+    type: "termination",
+    status: "active",
+  },
+  {
+    name: "Absconded",
+    type: "termination",
+    status: "active",
+  },
+];
+
+// 7. Creates default reasons for a new company using raw SQL
+async function createDefaultReasons(companyId) {
+  try {
+    console.log(`Creating default reasons for company ID: ${companyId}`);
+
+    const currentTime = formatDate(new Date());
+
+    // Prepare all reasons with companyId
+    const reasonsToCreate = DEFAULT_REASONS.map((reason) => ({
+      ...reason,
+      company_id: companyId,
+      created_at: currentTime,
+      updated_at: currentTime,
+    }));
+
+    // Try different table name formats (snake_case is most common)
+    // Try 'reasons' table first (with company_id, created_at, updated_at)
+    try {
+      // Build values placeholders for bulk insert
+      const valuesPlaceholders = reasonsToCreate
+        .map(() => "(?, ?, ?, ?, ?, ?)")
+        .join(", ");
+
+      const insertQuery = `
+        INSERT INTO reasons (company_id, name, type, status, created_at, updated_at)
+        VALUES ${valuesPlaceholders}
+      `;
+
+      // Flatten the values array for the query
+      const values = reasonsToCreate.flatMap((reason) => [
+        reason.company_id,
+        reason.name,
+        reason.type,
+        reason.status,
+        reason.created_at,
+        reason.updated_at,
+      ]);
+
+      await db.query(insertQuery, values);
+      console.log(
+        `Successfully created ${reasonsToCreate.length} default reasons for company ${companyId}`
+      );
+      return true;
+    } catch (firstErr) {
+      // Try 'Reasons' table (with companyId, createdAt, updatedAt - camelCase)
+      try {
+        // Build values placeholders for bulk insert
+        const valuesPlaceholders = reasonsToCreate
+          .map(() => "(?, ?, ?, ?, ?, ?)")
+          .join(", ");
+
+        const insertQuery = `
+          INSERT INTO Reasons (companyId, name, type, status, createdAt, updatedAt)
+          VALUES ${valuesPlaceholders}
+        `;
+
+        // Flatten the values array for the query
+        const values = reasonsToCreate.flatMap((reason) => [
+          reason.company_id,
+          reason.name,
+          reason.type,
+          reason.status,
+          reason.created_at,
+          reason.updated_at,
+        ]);
+
+        await db.query(insertQuery, values);
+        console.log(
+          `Successfully created ${reasonsToCreate.length} default reasons for company ${companyId}`
+        );
+        return true;
+      } catch (secondErr) {
+        // Table doesn't exist or different structure
+        console.log(
+          "Reasons table not found or different structure, skipping reasons creation"
+        );
+        console.log("Error details:", secondErr.message);
+        return false;
+      }
+    }
+  } catch (error) {
+    console.error(
+      `Error creating default reasons for company ${companyId}:`,
+      error
+    );
+    // Don't throw - allow company creation to succeed even if reasons fail
+    return false;
+  }
+}
+
 export const createCompany = async (req, res, next) => {
   const {
     code,
@@ -213,7 +358,17 @@ export const createCompany = async (req, res, next) => {
       companyId,
     ]);
 
-    // 5. Fetch the complete data for API response (try with employee data first)
+    // 5. Try to create default reasons if reasons table exists
+    try {
+      await createDefaultReasons(companyId);
+      console.log(`Default reasons created for company: ${name} (ID: ${companyId})`);
+    } catch (reasonError) {
+      console.error("Error creating default reasons:", reasonError);
+      // Don't fail company creation if reasons creation fails
+      // The company is already created, so we just log the error
+    }
+
+    // 6. Fetch the complete data for API response (try with employee data first)
     const [company] = await db.query("SELECT * FROM companies WHERE id = ?", [
       companyId,
     ]);
