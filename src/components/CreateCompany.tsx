@@ -413,13 +413,16 @@ export default function CreateCompany({
             {/* Left Column */}
             <div className="space-y-5">
               {[
-                { name: "code", label: "Code", type: "text", required: true },
-                { name: "name", label: "Name", type: "text" },
-                { name: "address", label: "Address", type: "text" },
+                { name: "name", label: "Name of the Company", type: "text" },
+                { name: "address", label: "Address of the Company", type: "text" },
+                { name: "code", label: "Employee Code", type: "text", required: true },
+                {
+                  name: "contact_person",
+                  label: "Employee Name",
+                  type: "text",
+                },
                 { name: "email", label: "Email", type: "email" },
-                { name: "phone", label: "Phone", type: "tel" },
-                { name: "pf_code", label: "PF Code", type: "text" },
-                { name: "esi_code", label: "ESI Code", type: "text" },
+                
               ].map((field) => (
                 <div key={field.name} className="relative">
                   <input
@@ -439,41 +442,7 @@ export default function CreateCompany({
                   </label>
                 </div>
               ))}
-            </div>
 
-            {/* Right Column */}
-            <div className="space-y-5">
-              {[
-                {
-                  name: "labour_license",
-                  label: "Labour License",
-                  type: "text",
-                },
-                { name: "domain_name", label: "Domain Name", type: "text" },
-                {
-                  name: "contact_person",
-                  label: "Contact Person",
-                  type: "text",
-                },
-                { name: "website", label: "Website", type: "text" },
-                // { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
-              ].map((field) => (
-                <div key={field.name} className="relative">
-                  <input
-                    type={field.type}
-                    name={field.name}
-                    value={
-                      formData[field.name as keyof CompanyFormData] as string
-                    }
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
-                    placeholder=" "
-                  />
-                  <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
-                    {field.label}
-                  </label>
-                </div>
-              ))}
 
               {/* Password field with eye toggle */}
               <div className="relative">
@@ -522,6 +491,43 @@ export default function CreateCompany({
                   </div>
                 )}
               </div>
+
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-5">
+              {[
+                { name: "phone", label: "Phone", type: "tel" },
+                { name: "pf_code", label: "PF Code", type: "text" },
+                { name: "esi_code", label: "ESI Code", type: "text" },
+                {
+                  name: "labour_license",
+                  label: "Labour License",
+                  type: "text",
+                },
+                { name: "domain_name", label: "Domain Name", type: "text" },
+                
+                { name: "website", label: "Website", type: "text" },
+                // { name: 'super_admin_id', label: 'Super Admin ID', type: 'text' },
+              ].map((field) => (
+                <div key={field.name} className="relative">
+                  <input
+                    type={field.type}
+                    name={field.name}
+                    value={
+                      formData[field.name as keyof CompanyFormData] as string
+                    }
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors peer"
+                    placeholder=" "
+                  />
+                  <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-placeholder-shown:text-sm peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-placeholder-shown:bg-transparent peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
+                    {field.label}
+                  </label>
+                </div>
+              ))}
+
+              
             </div>
           </div>
           {/* Additional Fields Section */}
@@ -600,6 +606,9 @@ export default function CreateCompany({
                   <option value="Healthcare">Healthcare</option>
                   <option value="Education">Education</option>
                   <option value="Retail">Retail</option>
+                  <option value="Service">Service</option>
+                  <option value="Man Power Supply">Man Power Supply</option>
+                  <option value="Other">Other</option>
                 </select>
                 <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs font-medium text-gray-600 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-gray-600 peer-focus:bg-white transition-all">
                   Sector<span className="text-red-500">*</span>
