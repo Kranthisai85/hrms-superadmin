@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Building2, ChevronLeft, MoreVertical, Star, Key } from "lucide-react";
+import { Building2, ChevronLeft, MoreVertical, Star } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import type { Company } from "../types";
 import CreateCompany from "./CreateCompany";
@@ -131,7 +131,7 @@ export default function CompanyList({
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [companyToUpdate, setCompanyToUpdate] = useState<Company | null>(null);
   const [searchQuery, setSearchQuery] = useState(""); // For search input
-  const [, setUpdateLoading] = useState(false); // For update modal loading
+  // const [, setUpdateLoading] = useState(false); // For update modal loading
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [companyIdToDelete, setCompanyIdToDelete] = useState<string | null>(
     null
@@ -404,10 +404,10 @@ export default function CompanyList({
     setFilteredCompanies(sortedFiltered);
   };
 
-  const handlePasswordManager = (company: Company) => {
-    setSelectedCompanyForPassword(company);
-    setShowPasswordManager(true);
-  };
+  // const handlePasswordManager = (company: Company) => {
+  //   setSelectedCompanyForPassword(company);
+  //   setShowPasswordManager(true);
+  // };
 
   // Callback to update company in state after update
   const handleCompanyUpdated = (updatedCompany: Company) => {
@@ -419,6 +419,35 @@ export default function CompanyList({
     );
     setShowCreateModal(false);
     setCompanyToUpdate(null);
+  };
+
+  // Callback to refresh companies list after creation
+  const handleCompanyCreated = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/companies`);
+      const sortedCompanies = response.data.sort((a: Company, b: Company) => {
+        return (
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      });
+      setCompanies(sortedCompanies);
+      setFilteredCompanies(sortedCompanies);
+    } catch (err: any) {
+      if (
+        axios.isAxiosError(err) &&
+        err.response &&
+        err.response.data &&
+        err.response.data.error
+      ) {
+        setError(err.response.data.error);
+      } else {
+        setError("Failed to refresh companies. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const navigate = onNavigateBack; // Use the provided navigation function
@@ -731,6 +760,7 @@ export default function CompanyList({
               : null
           }
           onCompanyUpdated={handleCompanyUpdated}
+          onCompanyCreated={handleCompanyCreated}
         />
       )}
       <ConfirmDialog

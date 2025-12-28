@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import { API_BASE_URL, LOGO_UPLOAD_URL, EMAIL_SEND_URL } from "../config";
 
 interface CompanyFormData {
-  code: string;
+  code: string; // Company code
+  empCode: string; // Employee code (for employees table)
   name: string;
   address: string;
   email: string;
@@ -36,6 +37,7 @@ interface CreateCompanyProps {
   company?: {
     id: string;
     code: string;
+    empCode?: string; // Employee code (optional for backwards compatibility)
     name: string;
     address: string;
     email: string;
@@ -61,16 +63,19 @@ interface CreateCompanyProps {
     module_payroll: boolean | number;
     module_reports: boolean | number;
   } | null; // Optional company for updating
-  onCompanyUpdated?: (updatedCompany: any) => void; // Add this line
+  onCompanyUpdated?: (updatedCompany: any) => void;
+  onCompanyCreated?: () => void; // Callback for when company is created
 }
 
 export default function CreateCompany({
   onClose,
   company,
   onCompanyUpdated,
+  onCompanyCreated,
 }: CreateCompanyProps): JSX.Element {
   const [formData, setFormData] = useState<CompanyFormData>({
-    code: "",
+    code: "", // Company code
+    empCode: "", // Employee code
     name: "",
     address: "",
     email: "",
@@ -112,6 +117,7 @@ export default function CreateCompany({
     if (company) {
       setFormData({
         code: company.code || "",
+        empCode: (company as any).empCode || company.code || "", // Use empCode if available, fallback to code for backwards compatibility
         name: company.name || "",
         address: company.address || "",
         email: company.email || "",
@@ -241,8 +247,15 @@ export default function CreateCompany({
       return;
     }
 
-    if (!formData.code) {
-      setError("Code is required.");
+    if (!formData.code || formData.code.trim() === "") {
+      setError("Company code is required.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Validate empCode only for create mode (required)
+    if (!company && (!formData.empCode || formData.empCode.trim() === "")) {
+      setError("Employee code is required.");
       setIsSubmitting(false);
       return;
     }
@@ -332,20 +345,31 @@ export default function CreateCompany({
             },
           }
         );
-        alert("Company created successfully!");
-      }
-
-      // Send email if `inviteAdmin` is checked
-      if (formData.invite_admin) {
-        await axios.post(EMAIL_SEND_URL, {
-          to: formData.email,
-          companyName: formData.name,
-          subdomain: formData.domain_name,
-          email: formData.email,
-          password: formData.password,
-          sendEmail: true,
-        });
-        alert("Invitation email sent successfully!");
+        // Send email if `inviteAdmin` is checked (only for create mode)
+        if (formData.invite_admin) {
+          try {
+            await axios.post(EMAIL_SEND_URL, {
+              to: formData.email,
+              companyName: formData.name,
+              subdomain: formData.domain_name,
+              email: formData.email,
+              password: formData.password,
+              sendEmail: true,
+            });
+            alert("Company created successfully! Invitation email sent.");
+          } catch (emailErr) {
+            console.error("Failed to send invitation email:", emailErr);
+            alert("Company created successfully! However, invitation email failed to send.");
+          }
+        } else {
+          alert("Company created successfully!");
+        }
+        
+        // Refresh companies list and close modal after alert is dismissed
+        if (onCompanyCreated) {
+          onCompanyCreated();
+        }
+        onClose();
       }
     } catch (err: any) {
       if (
@@ -365,7 +389,8 @@ export default function CreateCompany({
 
   const handleReset = () => {
     setFormData({
-      code: "",
+      code: "", // Company code
+      empCode: "", // Employee code
       name: "",
       address: "",
       email: "",
@@ -415,7 +440,8 @@ export default function CreateCompany({
               {[
                 { name: "name", label: "Name of the Company", type: "text" },
                 { name: "address", label: "Address of the Company", type: "text" },
-                { name: "code", label: "Employee Code", type: "text", required: true },
+                { name: "code", label: "Company Code", type: "text", required: true },
+                { name: "empCode", label: "Employee Code", type: "text", required: !company },
                 {
                   name: "contact_person",
                   label: "Employee Name",

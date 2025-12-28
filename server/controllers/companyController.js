@@ -14,6 +14,7 @@ function getCompanySelectQueryWithEmployee(
       ${companyAlias}.phone as phone,
       ${companyAlias}.contact_person as contact_person,
       ${employeeAlias}.id as employee_id,
+      COALESCE(${employeeAlias}.emp_code, ${companyAlias}.emp_code) as empCode,
       ${companyAlias}.module_employee,
       ${companyAlias}.module_attendance,
       ${companyAlias}.module_payroll,
@@ -222,9 +223,14 @@ async function createDefaultReasons(companyId) {
   }
 }
 
-export const createCompany = async (req, res, next) => {
+// Unified function to handle both create and update company
+const createOrUpdateCompany = async (req, res, next) => {
+  const id = req.params?.id; // Will be undefined for create, defined for update
+  const isUpdate = !!id;
+
   const {
-    code,
+    code, // Company code (for companies table)
+    empCode, // Employee code (for employees table)
     name,
     address,
     email,
@@ -238,18 +244,16 @@ export const createCompany = async (req, res, next) => {
     website,
     super_admin_id,
     logo,
-    createdAt,
-    updatedAt,
     pan_no,
     tan_no,
     company_type,
     sector,
     service_commences_on,
-    // Module fields
-    module_employee = 1,
-    module_attendance = 1,
-    module_payroll = 1,
-    module_reports = 0,
+    // Module fields - defaults only apply for create
+    module_employee,
+    module_attendance,
+    module_payroll,
+    module_reports,
     // For user:
     last_name,
     date_of_birth,
@@ -257,162 +261,385 @@ export const createCompany = async (req, res, next) => {
     blood_group,
   } = req.body;
 
+  // Build data object - apply defaults for create mode
+  const dataToProcess = isUpdate ? req.body : {
+    code,
+    empCode,
+    name,
+    address,
+    email,
+    phone,
+    password,
+    pf_code,
+    esi_code,
+    labour_license,
+    domain_name,
+    contact_person,
+    website,
+    logo,
+    pan_no,
+    tan_no,
+    company_type,
+    sector,
+    service_commences_on,
+    module_employee: module_employee !== undefined ? module_employee : 1,
+    module_attendance: module_attendance !== undefined ? module_attendance : 0,
+    module_payroll: module_payroll !== undefined ? module_payroll : 0,
+    module_reports: module_reports !== undefined ? module_reports : 0,
+    last_name,
+    date_of_birth,
+    gender,
+    blood_group,
+  };
+
   try {
-    // Validate and normalize module fields
-    const validatedData = validateModuleFields({
-      module_employee,
-      module_attendance,
-      module_payroll,
-      module_reports,
+    // 🔥 PREVENT CACHING - Ensure browser doesn't cache company data
+    res.set({
+      "Cache-Control":
+        "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
     });
+
+    // Validate and normalize module fields
+    const moduleFieldsToValidate = {};
+    if (dataToProcess.module_employee !== undefined) moduleFieldsToValidate.module_employee = dataToProcess.module_employee;
+    if (dataToProcess.module_attendance !== undefined) moduleFieldsToValidate.module_attendance = dataToProcess.module_attendance;
+    if (dataToProcess.module_payroll !== undefined) moduleFieldsToValidate.module_payroll = dataToProcess.module_payroll;
+    if (dataToProcess.module_reports !== undefined) moduleFieldsToValidate.module_reports = dataToProcess.module_reports;
+
+    const validatedData = validateModuleFields(moduleFieldsToValidate);
+    // Merge validated module fields back
+    Object.assign(dataToProcess, validatedData);
 
     // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
-    let formattedServiceCommencesOn = service_commences_on;
-    if (service_commences_on && service_commences_on.match(/^\d{4}-\d{2}$/)) {
-      formattedServiceCommencesOn = service_commences_on + "-01";
+    if (dataToProcess.service_commences_on && dataToProcess.service_commences_on.match(/^\d{4}-\d{2}$/)) {
+      dataToProcess.service_commences_on = dataToProcess.service_commences_on + "-01";
     }
 
-    // 1. First, create the company
-    const [companyResult] = await db.query(
-      `INSERT INTO companies 
-      (code, name, address, pf_code, esi_code, labour_license, domain_name, 
-       website, logo, pan_no, tan_no, company_type, sector, service_commences_on, 
-       module_employee, module_attendance, module_payroll, module_reports, created_at, updated_at) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        code,
-        name,
-        address,
-        pf_code,
-        esi_code,
-        labour_license,
-        domain_name,
-        website,
-        logo,
-        pan_no,
-        tan_no,
-        company_type,
-        sector,
-        formattedServiceCommencesOn,
-        validatedData.module_employee,
-        validatedData.module_attendance,
-        validatedData.module_payroll,
-        validatedData.module_reports,
-      ]
-    );
-
-    const companyId = companyResult.insertId;
-
-    // 2. Create admin user (password and auth info)
-    const [userResult] = await db.query(
-      `INSERT INTO users (name, last_name, email, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
-      [
-        contact_person || name,
-        last_name || "",
-        email, // Email in users table as fallback
-        password,
-        "admin",
-        phone,
-        "Active",
-        companyId,
-        date_of_birth || null,
-        gender || null,
-        blood_group || null,
-      ]
-    );
-
-    const superAdminId = userResult.insertId;
+    let companyId;
+    let superAdminId;
     let employeeId = null;
 
-    // 3. Try to create employee record if employees table exists
-    try {
-      const [employeeResult] = await db.query(
-        `INSERT INTO employees (
-          company_id, user_id, employee_code, first_name, last_name, email, phone, 
-          date_of_birth, gender, blood_group, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [
+    if (isUpdate) {
+      // ========== UPDATE MODE ==========
+      // Get existing company to find super admin ID
+      const [existingCompany] = await db.query(
+        "SELECT super_admin_id FROM companies WHERE id = ?",
+        [id]
+      );
+      if (existingCompany.length === 0) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      companyId = id;
+      superAdminId = existingCompany[0].super_admin_id;
+
+      // Separate fields for different tables
+      const companyFields = [
+        "code", "emp_code", "name", "address", "pf_code", "esi_code", "labour_license",
+        "domain_name", "website", "logo", "pan_no", "tan_no", "company_type",
+        "sector", "service_commences_on", "email", "phone", "contact_person",
+        "password", "module_employee", "module_attendance", "module_payroll", "module_reports",
+      ];
+      const userFields = [
+        "contact_person", "date_of_birth", "gender", "blood_group", "email", "phone", "password",
+      ];
+      const employeeFields = [
+        "empCode",
+      ];
+
+      const companyData = {};
+      const userData = {};
+      const employeeData = {};
+
+      // Filter fields for company table
+      for (const key of companyFields) {
+        // Map empCode from frontend to emp_code for database
+        const sourceKey = key === "emp_code" ? "empCode" : key;
+        if (dataToProcess[sourceKey] !== undefined) {
+          if (key === "password") {
+            // Only add password if it's NOT empty
+            if (dataToProcess[sourceKey]) {
+              companyData[key] = dataToProcess[sourceKey];
+            }
+          } else {
+            companyData[key] = dataToProcess[sourceKey];
+          }
+        }
+      }
+
+      // Filter fields for user table
+      for (const key of userFields) {
+        if (dataToProcess[key] !== undefined) {
+          if (key === "contact_person") {
+            userData.name = dataToProcess[key];
+          } else if (key === "password") {
+            // Only update password if it's NOT empty
+            if (dataToProcess[key]) {
+              userData[key] = dataToProcess[key];
+            }
+          } else {
+            userData[key] = dataToProcess[key];
+          }
+        }
+      }
+
+      // Filter fields for employee table
+      for (const key of employeeFields) {
+        if (dataToProcess[key] !== undefined) {
+          if (key === "contact_person") {
+            employeeData.first_name = dataToProcess[key];
+          } else if (key === "empCode") {
+            // Map empCode to emp_code in database
+            // Only update if empCode is provided and not empty
+            if (dataToProcess[key] && dataToProcess[key].trim() !== "") {
+              employeeData.emp_code = dataToProcess[key].trim();
+            }
+          } else {
+            employeeData[key] = dataToProcess[key];
+          }
+        }
+      }
+
+      // Update company table
+      if (Object.keys(companyData).length > 0) {
+        companyData.updated_at = new Date();
+        const [result] = await db.query("UPDATE companies SET ? WHERE id = ?", [
+          companyData,
           companyId,
-          superAdminId,
-          code, // Using company code as employee code for admin
-          contact_person || name,
-          last_name || "",
-          email, // Email goes to employee table
-          phone,
-          date_of_birth || null,
-          gender || null,
-          blood_group || null,
-          "Active",
+        ]);
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ error: "Company not found" });
+        }
+      }
+
+      // Update user table
+      if (Object.keys(userData).length > 0 && superAdminId) {
+        userData.updated_at = new Date();
+        await db.query("UPDATE users SET ? WHERE id = ?", [userData, superAdminId]);
+      }
+      console.log("userData");
+      console.log(userData);
+      console.log("employeeData");
+      console.log(employeeData);
+      // Update employee table if it exists
+      if (Object.keys(employeeData).length > 0 && superAdminId) {
+        try {
+          employeeData.updated_at = new Date();
+          await db.query(
+            "UPDATE employees SET ? WHERE user_id = ?",
+            [employeeData, superAdminId]
+          );
+          console.log("Employee data updated successfully");
+        } catch (employeeErr) {
+          console.log(`Employees table not found, employee data not updated ${employeeErr.message}`);
+        }
+      }
+    } else {
+      // ========== CREATE MODE ==========
+      // Validate required fields for create
+      if (!password || (typeof password === "string" && password.trim() === "")) {
+        return res.status(400).json({ error: "Password is required for creating a company" });
+      }
+      if (!code || (typeof code === "string" && code.trim() === "")) {
+        return res.status(400).json({ error: "Company code is required for creating a company" });
+      }
+      if (!empCode || (typeof empCode === "string" && empCode.trim() === "")) {
+        return res.status(400).json({ error: "Employee code is required for creating a company" });
+      }
+
+      // 1. Create the company
+      const [companyResult] = await db.query(
+        `INSERT INTO companies 
+        (code, emp_code, name, address, pf_code, esi_code, labour_license, domain_name, 
+         website, logo, pan_no, tan_no, company_type, sector, service_commences_on, 
+         email, phone, contact_person, password,
+         module_employee, module_attendance, module_payroll, module_reports, created_at, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          dataToProcess.code,
+          dataToProcess.empCode,
+          dataToProcess.name,
+          dataToProcess.address,
+          dataToProcess.pf_code,
+          dataToProcess.esi_code,
+          dataToProcess.labour_license,
+          dataToProcess.domain_name,
+          dataToProcess.website,
+          dataToProcess.logo,
+          dataToProcess.pan_no,
+          dataToProcess.tan_no,
+          dataToProcess.company_type,
+          dataToProcess.sector,
+          dataToProcess.service_commences_on,
+          dataToProcess.email,
+          dataToProcess.phone,
+          dataToProcess.contact_person,
+          dataToProcess.password,
+          validatedData.module_employee,
+          validatedData.module_attendance,
+          validatedData.module_payroll,
+          validatedData.module_reports,
         ]
       );
-      employeeId = employeeResult.insertId;
-      console.log("Employee record created successfully");
-    } catch (employeeErr) {
-      console.log("Employees table not found, skipping employee creation");
-    }
 
-    // 4. Update the company with the super_admin_id
-    await db.query("UPDATE companies SET super_admin_id = ? WHERE id = ?", [
-      superAdminId,
-      companyId,
-    ]);
+      companyId = companyResult.insertId;
 
-    // 5. Try to create default reasons if reasons table exists
-    try {
-      await createDefaultReasons(companyId);
-      console.log(`Default reasons created for company: ${name} (ID: ${companyId})`);
-    } catch (reasonError) {
-      console.error("Error creating default reasons:", reasonError);
-      // Don't fail company creation if reasons creation fails
-      // The company is already created, so we just log the error
-    }
-
-    // 6. Fetch the complete data for API response (try with employee data first)
-    const [company] = await db.query("SELECT * FROM companies WHERE id = ?", [
-      companyId,
-    ]);
-    const [user] = await db.query("SELECT * FROM users WHERE id = ?", [
-      superAdminId,
-    ]);
-
-    let responseCompany;
-
-    if (employeeId) {
-      // If employee was created, get data from employee table
-      const [employee] = await db.query(
-        "SELECT * FROM employees WHERE id = ?",
-        [employeeId]
+      // 2. Create admin user
+      const [userResult] = await db.query(
+        `INSERT INTO users (name, last_name, email, password, role, phone, status, company_id, created_at, updated_at, date_of_birth, gender, blood_group)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
+        [
+          dataToProcess.contact_person || dataToProcess.name,
+          dataToProcess.last_name || "",
+          dataToProcess.email,
+          dataToProcess.password,
+          "admin",
+          dataToProcess.phone,
+          "Active",
+          companyId,
+          dataToProcess.date_of_birth || null,
+          dataToProcess.gender || null,
+          dataToProcess.blood_group || null,
+        ]
       );
-      responseCompany = {
-        ...company[0],
-        email: employee[0].email, // From employee table
-        phone: employee[0].phone, // From employee table
-        password: user[0].password, // From user table
-        contact_person: employee[0].first_name, // From employee table
-        super_admin_id: superAdminId, // Set the super admin ID
-        employee_id: employeeId, // Include employee ID
-      };
-    } else {
-      // Fall back to user data
-      responseCompany = {
-        ...company[0],
-        email: user[0].email, // From user table
-        phone: user[0].phone, // From user table
-        password: user[0].password, // From user table
-        contact_person: user[0].name, // From user table
-        super_admin_id: superAdminId, // Set the super admin ID
-      };
+
+      superAdminId = userResult.insertId;
+
+      // 3. Try to create employee record if employees table exists
+      try {
+        const [employeeResult] = await db.query(
+          `INSERT INTO employees (
+            user_id, emp_code, created_at, updated_at
+          ) VALUES (?, ?, NOW(), NOW())`,
+          [
+            superAdminId,
+            (dataToProcess.empCode && dataToProcess.empCode.trim() !== "") 
+              ? dataToProcess.empCode.trim() 
+              : dataToProcess.code.trim(), // Use empCode, fallback to code for backwards compatibility
+          ]
+        );
+        employeeId = employeeResult.insertId;
+        const insertedEmpCode = (dataToProcess.empCode && dataToProcess.empCode.trim() !== "") 
+          ? dataToProcess.empCode.trim() 
+          : dataToProcess.code.trim();
+        console.log("Employee record created successfully with emp_code:", insertedEmpCode);
+      } catch (employeeErr) {
+        console.log("Employees table not found, skipping employee creation:", employeeErr.message);
+      }
+
+      // 4. Update the company with the super_admin_id
+      await db.query("UPDATE companies SET super_admin_id = ? WHERE id = ?", [
+        superAdminId,
+        companyId,
+      ]);
+
+      // 5. Create default reasons (only for new companies)
+      try {
+        await createDefaultReasons(companyId);
+        console.log(`Default reasons created for company: ${dataToProcess.name} (ID: ${companyId})`);
+      } catch (reasonError) {
+        console.error("Error creating default reasons:", reasonError);
+        // Don't fail company creation if reasons creation fails
+      }
     }
 
-    res.status(201).json({
-      message: employeeId
-        ? "Company, admin user, and employee created successfully"
-        : "Company and admin user created successfully",
-      company: responseCompany,
-      user_id: superAdminId,
-      employee_id: employeeId,
-    });
+    // ========== FETCH AND RETURN DATA ==========
+    // Try to fetch with employee data first, fall back to users only
+    try {
+      const [companyResult] = await db.query(
+        `
+        ${getCompanySelectQueryWithEmployee("c", "u", "e")}
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        LEFT JOIN employees e ON e.user_id = u.id
+        WHERE c.id = ?
+        `,
+        [companyId]
+      );
+
+      if (companyResult.length === 0) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      // Format service_commences_on
+      const companyData = { ...companyResult[0] };
+      if (companyData.service_commences_on) {
+        const date = new Date(companyData.service_commences_on);
+        companyData.service_commences_on =
+          date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+      }
+
+      // Clear cache for updates
+      if (isUpdate) {
+        const cacheKey = `companies:${companyId}`;
+        try {
+          if (typeof global.cacheService !== "undefined" && global.cacheService?.del) {
+            global.cacheService.del(cacheKey);
+            console.log("🔄 Cache cleared for key:", cacheKey);
+          }
+        } catch (cacheErr) {
+          console.log("ℹ️ Error clearing cache:", cacheErr.message);
+        }
+      }
+
+      const responseData = ensureModuleValuesAreNumbers(companyData);
+
+      if (isUpdate) {
+        res.status(200).json({
+          message: "Company updated successfully",
+          company: responseData,
+        });
+      } else {
+        res.status(201).json({
+          message: employeeId
+            ? "Company, created successfully"
+            : "Company created successfully",
+          company: responseData,
+          user_id: superAdminId,
+          employee_id: employeeId,
+        });
+      }
+    } catch (fetchErr) {
+      // Fall back to users table only
+      console.log(`Employees table not found, using users table only ${fetchErr.message}`);
+      const [companyResult] = await db.query(
+        `
+        ${getCompanySelectQueryWithoutEmployee("c", "u")}
+        FROM companies c
+        LEFT JOIN users u ON c.super_admin_id = u.id
+        WHERE c.id = ?
+        `,
+        [companyId]
+      );
+
+      if (companyResult.length === 0) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+
+      const companyData = { ...companyResult[0] };
+      if (companyData.service_commences_on) {
+        const date = new Date(companyData.service_commences_on);
+        companyData.service_commences_on =
+          date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+      }
+
+      const responseData = ensureModuleValuesAreNumbers(companyData);
+
+      if (isUpdate) {
+        res.status(200).json({
+          message: "Company updated successfully",
+          company: responseData,
+        });
+      } else {
+        res.status(201).json({
+          message: "Company and admin user created successfully",
+          company: responseData,
+          user_id: superAdminId,
+        });
+      }
+    }
   } catch (err) {
     // Check if this is a validation error for module fields
     if (err.message && err.message.includes("Invalid value for")) {
@@ -422,9 +649,21 @@ export const createCompany = async (req, res, next) => {
         error: err.message,
       });
     }
-    console.error("Error creating company:", err);
+    console.error(`Error ${isUpdate ? "updating" : "creating"} company:`, err);
     next(err);
   }
+};
+
+// Export as separate functions for route compatibility
+export const createCompany = async (req, res, next) => {
+  // Remove id from params if somehow present
+  delete req.params.id;
+  return createOrUpdateCompany(req, res, next);
+};
+
+export const updateCompany = async (req, res, next) => {
+  // Ensure id is in params
+  return createOrUpdateCompany(req, res, next);
 };
 
 export const getCompanies = async (req, res, next) => {
@@ -644,306 +883,6 @@ export const getCompanyById = async (req, res, next) => {
   }
 };
 
-// Update a company by ID
-export const updateCompany = async (req, res, next) => {
-  const { id } = req.params; // Get the company ID from the URL
-  let updatedData = req.body; // Get the updated data from the request body
-
-  try {
-    // 🔥 PREVENT CACHING - Ensure browser doesn't cache updated company data
-    res.set({
-      "Cache-Control":
-        "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-      Pragma: "no-cache",
-      Expires: "0",
-    });
-
-    // Validate and normalize module fields
-    updatedData = validateModuleFields(updatedData);
-
-    // Convert month format (YYYY-MM) to full date (YYYY-MM-01) for service_commences_on
-    if (
-      updatedData.service_commences_on &&
-      updatedData.service_commences_on.match(/^\d{4}-\d{2}$/)
-    ) {
-      updatedData.service_commences_on =
-        updatedData.service_commences_on + "-01";
-    }
-
-    // First, get the company to find the super admin ID
-    const [company] = await db.query(
-      "SELECT super_admin_id FROM companies WHERE id = ?",
-      [id]
-    );
-    if (company.length === 0) {
-      return res.status(404).json({ error: "Company not found" });
-    }
-
-    const superAdminId = company[0].super_admin_id;
-
-    // Separate fields for different tables (using current structure)
-    const companyFields = [
-      "code",
-      "name",
-      "address",
-      "pf_code",
-      "esi_code",
-      "labour_license",
-      "domain_name",
-      "website",
-      "logo",
-      "pan_no",
-      "tan_no",
-      "company_type",
-      "sector",
-      "service_commences_on",
-      "email",
-      "phone",
-      "contact_person",
-      "password",
-      "module_employee",
-      "module_attendance",
-      "module_payroll",
-      "module_reports",
-    ];
-    const userFields = [
-      "contact_person",
-      "date_of_birth",
-      "gender",
-      "blood_group",
-      "email",
-      "password",
-    ];
-
-    const companyData = {};
-    const userData = {};
-
-    // Filter fields for company table
-    // Filter fields for company table
-    for (const key of companyFields) {
-      if (updatedData[key] !== undefined) {
-        // Check for the password field
-        if (key === "password") {
-          // Only add password to the save list if it's NOT empty
-          if (updatedData[key]) {
-            companyData[key] = updatedData[key];
-          }
-        } else {
-          // This 'else' block runs for 'name', 'email', 'phone', etc.
-          // This line adds them to the data that will be saved:
-          companyData[key] = updatedData[key];
-        }
-      }
-    }
-
-    console.log("Data to update in companies table:", companyData);
-
-    // Filter fields for user table (map contact_person to name)
-    for (const key of userFields) {
-      if (updatedData[key] !== undefined) {
-        if (key === "contact_person") {
-          userData.name = updatedData[key];
-        } else if (key === "password") {
-          // Only update password in users table if it's NOT empty
-          if (updatedData[key]) {
-            userData[key] = updatedData[key];
-          }
-        } else {
-          userData[key] = updatedData[key];
-        }
-      }
-    }
-
-    // Update company table if there are company fields to update
-    if (Object.keys(companyData).length > 0) {
-      companyData.updated_at = new Date();
-      const [result] = await db.query("UPDATE companies SET ? WHERE id = ?", [
-        companyData,
-        id,
-      ]);
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: "Company not found" });
-      }
-    }
-
-    // Update user table if there are user fields to update
-    if (Object.keys(userData).length > 0 && superAdminId) {
-      userData.updated_at = new Date();
-      await db.query("UPDATE users SET ? WHERE id = ?", [
-        userData,
-        superAdminId,
-      ]);
-    }
-
-    // Try to update employee table if it exists and there are employee-specific fields
-    const employeeFields = [
-      "email",
-      "phone",
-      "contact_person",
-      "date_of_birth",
-      "gender",
-      "blood_group",
-    ];
-    const employeeData = {};
-
-    for (const key of employeeFields) {
-      if (updatedData[key] !== undefined) {
-        if (key === "contact_person") {
-          employeeData.first_name = updatedData[key];
-        } else {
-          employeeData[key] = updatedData[key];
-        }
-      }
-    }
-
-    if (Object.keys(employeeData).length > 0 && superAdminId) {
-      try {
-        employeeData.updated_at = new Date();
-        await db.query(
-          "UPDATE employees SET ? WHERE user_id = ? AND company_id = ?",
-          [employeeData, superAdminId, id]
-        );
-        console.log("Employee data updated successfully");
-      } catch (employeeErr) {
-        console.log("Employees table not found, employee data not updated");
-      }
-    }
-
-    // Fetch updated company data (try with employee data first)
-    try {
-      const [updatedCompany] = await db.query(
-        `
-       ${getCompanySelectQueryWithEmployee("c", "u", "e")}
-      FROM companies c
-        LEFT JOIN users u ON c.super_admin_id = u.id
-        LEFT JOIN employees e ON e.user_id = u.id AND e.company_id = c.id
-        WHERE c.id = ?
-      `,
-        [id]
-      );
-
-      // Format service_commences_on to avoid timezone issues
-      const companyData = { ...updatedCompany[0] };
-      if (companyData.service_commences_on) {
-        const date = new Date(companyData.service_commences_on);
-        companyData.service_commences_on =
-          date.getFullYear() +
-          "-" +
-          String(date.getMonth() + 1).padStart(2, "0");
-      }
-
-      console.log("Updated company data being returned:", {
-        module_employee: companyData.module_employee,
-        module_attendance: companyData.module_attendance,
-        module_payroll: companyData.module_payroll,
-        module_reports: companyData.module_reports,
-      });
-
-      // 🆕 CLEAR SPECIFIC CACHE KEY - Explicit cache clearing
-      const cacheKey = `companies:${id}`;
-      try {
-        // Try to clear cache if cacheService exists and has del method
-        if (
-          typeof global.cacheService !== "undefined" &&
-          global.cacheService?.del
-        ) {
-          global.cacheService.del(cacheKey);
-          console.log("🔄 Cache cleared for key:", cacheKey);
-        }
-      } catch (cacheErr) {
-        console.log(
-          "ℹ️ Cache service not available or error clearing cache:",
-          cacheErr.message
-        );
-      }
-
-      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
-      res.set({
-        "Cache-Control":
-          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-        Pragma: "no-cache",
-        Expires: "0",
-      });
-
-      res.status(200).json({
-        message: "Company updated successfully",
-        company: ensureModuleValuesAreNumbers(companyData),
-      });
-    } catch (employeeErr) {
-      // Fall back to users table only
-      console.log("Employees table not found, using users table for response");
-      const [updatedCompany] = await db.query(
-        `
-       ${getCompanySelectQueryWithoutEmployee("c", "u")}
-        FROM companies c
-        LEFT JOIN users u ON c.super_admin_id = u.id
-        WHERE c.id = ?
-      `,
-        [id]
-      );
-
-      // Format service_commences_on to avoid timezone issues
-      const companyData = { ...updatedCompany[0] };
-      if (companyData.service_commences_on) {
-        const date = new Date(companyData.service_commences_on);
-        companyData.service_commences_on =
-          date.getFullYear() +
-          "-" +
-          String(date.getMonth() + 1).padStart(2, "0");
-      }
-
-      console.log("Updated company data being returned (no employee):", {
-        module_employee: companyData.module_employee,
-        module_attendance: companyData.module_attendance,
-        module_payroll: companyData.module_payroll,
-        module_reports: companyData.module_reports,
-      });
-
-      // 🆕 CLEAR SPECIFIC CACHE KEY - Explicit cache clearing
-      const cacheKey = `companies:${id}`;
-      try {
-        // Try to clear cache if cacheService exists and has del method
-        if (
-          typeof global.cacheService !== "undefined" &&
-          global.cacheService?.del
-        ) {
-          global.cacheService.del(cacheKey);
-          console.log("🔄 Cache cleared for key:", cacheKey);
-        }
-      } catch (cacheErr) {
-        console.log(
-          "ℹ️ Cache service not available or error clearing cache:",
-          cacheErr.message
-        );
-      }
-
-      // 🔥 PREVENT CACHING - Company data changes frequently (module updates)
-      res.set({
-        "Cache-Control":
-          "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-        Pragma: "no-cache",
-        Expires: "0",
-      });
-
-      res.status(200).json({
-        message: "Company updated successfully",
-        company: ensureModuleValuesAreNumbers(companyData),
-      });
-    }
-  } catch (err) {
-    // Check if this is a validation error for module fields
-    if (err.message && err.message.includes("Invalid value for")) {
-      console.error("Module validation error:", err.message);
-      return res.status(400).json({
-        success: false,
-        error: err.message,
-      });
-    }
-    console.error("Error updating company:", err);
-    next(err);
-  }
-};
-
 // Delete a company by ID
 export const deleteCompany = async (req, res, next) => {
   const { id } = req.params; // Get the company ID from the URL
@@ -958,7 +897,11 @@ export const deleteCompany = async (req, res, next) => {
 
     if (users[0].userCount > 0) {
       if (cascade === "true") {
-        // Cascade delete: Delete users first, then company
+        // Cascade delete: 
+        // 1. First, set super_admin_id to NULL to break the foreign key constraint
+        // 2. Then delete users
+        // 3. Finally delete the company
+        await db.query("UPDATE companies SET super_admin_id = NULL WHERE id = ?", [id]);
         await db.query("DELETE FROM users WHERE company_id = ?", [id]);
         const [result] = await db.query("DELETE FROM companies WHERE id = ?", [
           id,
@@ -980,7 +923,11 @@ export const deleteCompany = async (req, res, next) => {
         });
       }
     } else {
-      // No users associated, proceed with deletion
+      // No users associated, but still need to handle super_admin_id constraint
+      // Set super_admin_id to NULL first to break the foreign key constraint
+      await db.query("UPDATE companies SET super_admin_id = NULL WHERE id = ?", [id]);
+      
+      // Now delete the company
       const [result] = await db.query("DELETE FROM companies WHERE id = ?", [
         id,
       ]);
