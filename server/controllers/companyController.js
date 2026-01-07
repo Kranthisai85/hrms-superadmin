@@ -343,10 +343,11 @@ const createOrUpdateCompany = async (req, res, next) => {
         "password", "module_employee", "module_attendance", "module_payroll", "module_reports",
       ];
       const userFields = [
-        "contact_person", "date_of_birth", "gender", "blood_group", "email", "phone", "password",
+        "contact_person", "date_of_birth", "gender", "blood_group", "phone", "password",
       ];
       const employeeFields = [
         "empCode",
+        "email"
       ];
 
       const companyData = {};
