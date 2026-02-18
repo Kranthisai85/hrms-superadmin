@@ -202,9 +202,14 @@ export default function CreateCompany({
     }
   };
 
-  const uploadLogo = async (logo: File): Promise<string | null> => {
+  const uploadLogo = async (logo: File, companyId?: number): Promise<string | null> => {
     const logoFormData = new FormData();
     logoFormData.append("file", logo);
+    
+    // Add companyId if provided (for updates) or if creating new company, we'll handle it after creation
+    if (companyId) {
+      logoFormData.append("companyId", companyId.toString());
+    }
 
     try {
       const response = await axios.post(LOGO_UPLOAD_URL, logoFormData, {
@@ -212,9 +217,11 @@ export default function CreateCompany({
           "Content-Type": "multipart/form-data",
         },
       });
-      return response.data.fileUrl;
+      // Handle both old and new response formats
+      return response.data.fileUrl || response.data.data?.fileUrl || response.data.data?.url;
     } catch (err: any) {
-      setError("Failed to upload logo. Please try again.");
+      console.error("Logo upload error:", err);
+      setError(err.response?.data?.error || err.response?.data?.message || "Failed to upload logo. Please try again.");
       return null;
     }
   };
@@ -274,7 +281,8 @@ export default function CreateCompany({
     let logoUrl = null;
     // If a new logo is uploaded, upload it
     if (formData.logo) {
-      logoUrl = await uploadLogo(formData.logo);
+      // For updates, pass companyId; for new companies, don't pass it
+      logoUrl = await uploadLogo(formData.logo, company?.id);
       if (!logoUrl) {
         setIsSubmitting(false);
         return;

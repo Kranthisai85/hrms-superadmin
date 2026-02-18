@@ -809,6 +809,24 @@ export const getCompanyById = async (req, res, next) => {
 
       const responseData = ensureModuleValuesAreNumbers(companyData);
 
+      // 🆕 Cache logo URL if logo exists and is in R2
+      if (responseData.logo && responseData.logo.startsWith("company_logo/")) {
+        try {
+          const { getSignedUrlForPath } = await import("../services/cloudflareR2Service.js");
+          const logoUrl = await getSignedUrlForPath(responseData.logo);
+          
+          // Cache the signed URL separately
+          if (typeof global.cacheService !== "undefined" && global.cacheService?.set) {
+            global.cacheService.set(`company_logo:${companyId}`, logoUrl, 1800); // 30 minutes
+          }
+          
+          // Add signed URL to response
+          responseData.logoUrl = logoUrl;
+        } catch (logoErr) {
+          console.log("ℹ️ Error generating logo URL:", logoErr.message);
+        }
+      }
+
       // 🆕 Set cache with TTL (30 minutes) if cacheService available
       try {
         if (
@@ -861,6 +879,24 @@ export const getCompanyById = async (req, res, next) => {
       });
 
       const responseData = ensureModuleValuesAreNumbers(companyData);
+
+      // 🆕 Cache logo URL if logo exists and is in R2
+      if (responseData.logo && responseData.logo.startsWith("company_logo/")) {
+        try {
+          const { getSignedUrlForPath } = await import("../services/cloudflareR2Service.js");
+          const logoUrl = await getSignedUrlForPath(responseData.logo);
+          
+          // Cache the signed URL separately
+          if (typeof global.cacheService !== "undefined" && global.cacheService?.set) {
+            global.cacheService.set(`company_logo:${companyId}`, logoUrl, 1800); // 30 minutes
+          }
+          
+          // Add signed URL to response
+          responseData.logoUrl = logoUrl;
+        } catch (logoErr) {
+          console.log("ℹ️ Error generating logo URL:", logoErr.message);
+        }
+      }
 
       // 🆕 Set cache with TTL (30 minutes) if cacheService available
       try {
