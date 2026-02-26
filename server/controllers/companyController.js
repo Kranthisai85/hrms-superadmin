@@ -509,23 +509,25 @@ const createOrUpdateCompany = async (req, res, next) => {
       superAdminId = userResult.insertId;
 
       // 3. Try to create employee record if employees table exists
+      // Save email to employees table as Official/Office Email (users table has Personal Email)
       try {
         const [employeeResult] = await db.query(
           `INSERT INTO employees (
-            user_id, emp_code, created_at, updated_at
-          ) VALUES (?, ?, NOW(), NOW())`,
+            user_id, emp_code, email, created_at, updated_at
+          ) VALUES (?, ?, ?, NOW(), NOW())`,
           [
             superAdminId,
             (dataToProcess.empCode && dataToProcess.empCode.trim() !== "") 
               ? dataToProcess.empCode.trim() 
               : dataToProcess.code.trim(), // Use empCode, fallback to code for backwards compatibility
+            dataToProcess.email, // Official/Office Email for Org Details in HRMS frontend
           ]
         );
         employeeId = employeeResult.insertId;
         const insertedEmpCode = (dataToProcess.empCode && dataToProcess.empCode.trim() !== "") 
           ? dataToProcess.empCode.trim() 
           : dataToProcess.code.trim();
-        console.log("Employee record created successfully with emp_code:", insertedEmpCode);
+        console.log("Employee record created successfully with emp_code:", insertedEmpCode, "email (Official):", dataToProcess.email);
       } catch (employeeErr) {
         console.log("Employees table not found, skipping employee creation:", employeeErr.message);
       }
@@ -898,23 +900,32 @@ export const deleteCompany = async (req, res, next) => {
 
     if (users[0].userCount > 0) {
       if (cascade === "true") {
-        // Cascade delete: 
-        // 1. First, set super_admin_id to NULL to break the foreign key constraint
-        // 2. Then delete users
-        // 3. Finally delete the company
-        await db.query("UPDATE companies SET super_admin_id = NULL WHERE id = ?", [id]);
-        await db.query("DELETE FROM users WHERE company_id = ?", [id]);
-        const [result] = await db.query("DELETE FROM companies WHERE id = ?", [
-          id,
-        ]);
+        const conn = await db.getConnection();
+        try {
+          await conn.beginTransaction();
+          // 1. Delete child rows first (company-dependent tables)
+          await conn.query("DELETE FROM employee_code_structures WHERE company_id = ?", [id]);
+          // 2. Set super_admin_id to NULL to break the foreign key constraint
+          await conn.query("UPDATE companies SET super_admin_id = NULL WHERE id = ?", [id]);
+          // 3. Delete users
+          await conn.query("DELETE FROM users WHERE company_id = ?", [id]);
+          // 4. Delete the company
+          const [result] = await conn.query("DELETE FROM companies WHERE id = ?", [id]);
+          await conn.commit();
 
-        if (result.affectedRows === 0) {
-          return res.status(404).json({ error: "Company not found" });
+          if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Company not found" });
+          }
+
+          res.status(200).json({
+            message: `Company and ${users[0].userCount} associated users deleted successfully`,
+          });
+        } catch (txErr) {
+          await conn.rollback();
+          throw txErr;
+        } finally {
+          conn.release();
         }
-
-        res.status(200).json({
-          message: `Company and ${users[0].userCount} associated users deleted successfully`,
-        });
       } else {
         // Return error with user count
         return res.status(400).json({
@@ -924,20 +935,28 @@ export const deleteCompany = async (req, res, next) => {
         });
       }
     } else {
-      // No users associated, but still need to handle super_admin_id constraint
-      // Set super_admin_id to NULL first to break the foreign key constraint
-      await db.query("UPDATE companies SET super_admin_id = NULL WHERE id = ?", [id]);
-      
-      // Now delete the company
-      const [result] = await db.query("DELETE FROM companies WHERE id = ?", [
-        id,
-      ]);
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
+        // 1. Delete child rows first (company-dependent tables)
+        await conn.query("DELETE FROM employee_code_structures WHERE company_id = ?", [id]);
+        // 2. Set super_admin_id to NULL to break the foreign key constraint
+        await conn.query("UPDATE companies SET super_admin_id = NULL WHERE id = ?", [id]);
+        // 3. Delete the company
+        const [result] = await conn.query("DELETE FROM companies WHERE id = ?", [id]);
+        await conn.commit();
 
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: "Company not found" });
+        if (result.affectedRows === 0) {
+          return res.status(404).json({ error: "Company not found" });
+        }
+
+        res.status(200).json({ message: "Company deleted successfully" });
+      } catch (txErr) {
+        await conn.rollback();
+        throw txErr;
+      } finally {
+        conn.release();
       }
-
-      res.status(200).json({ message: "Company deleted successfully" });
     }
   } catch (err) {
     console.error("Error deleting company:", err);
